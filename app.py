@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -23,9 +24,15 @@ st.set_page_config(
 # ============================================================
 
 SPREADSHEET_ID = "1R7ioNIYj7iAK3kN21WWlrxy9J9qEdRM9GOebCnUQNpI"
+
 WORKSHEET_NAME = "ACD_Data"
 
-EXPECTED_COLUMNS = [
+
+# ============================================================
+# SOURCE COLUMNS
+# ============================================================
+
+SOURCE_COLUMNS = [
     "#",
     "Campaign Name",
     "Phone",
@@ -53,7 +60,8 @@ EXPECTED_COLUMNS = [
     "Call Notes",
 ]
 
-GOOGLE_COLUMNS = EXPECTED_COLUMNS + [
+
+CALCULATED_COLUMNS = [
     "Call Date",
     "Call Time Only",
     "AHT Seconds",
@@ -66,68 +74,22 @@ GOOGLE_COLUMNS = EXPECTED_COLUMNS + [
 ]
 
 
-# ============================================================
-# TITLE
-# ============================================================
-
-st.title("📞 ACD Time & Agent Performance")
-st.caption(
-    "Upload ACD call-detail reports, maintain historical data in Google Sheets, "
-    "and analyse AHT, ASA and ACW by agent, date, time and queue."
-)
+ALL_COLUMNS = SOURCE_COLUMNS + CALCULATED_COLUMNS
 
 
 # ============================================================
-# GOOGLE SHEETS CONNECTION
-# ============================================================
-
-@st.cache_resource
-def get_google_client():
-
-    scopes = [
-        "https://www.googleapis.com/auth/spreadsheets",
-        "https://www.googleapis.com/auth/drive",
-    ]
-
-    credentials = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes
-    )
-
-    return gspread.authorize(credentials)
-
-
-@st.cache_resource
-def get_worksheet():
-
-    client = get_google_client()
-
-    spreadsheet = client.open_by_key(SPREADSHEET_ID)
-
-    try:
-        worksheet = spreadsheet.worksheet(WORKSHEET_NAME)
-
-    except gspread.WorksheetNotFound:
-
-        worksheet = spreadsheet.add_worksheet(
-            title=WORKSHEET_NAME,
-            rows=1000,
-            cols=len(GOOGLE_COLUMNS)
-        )
-
-        worksheet.update(
-            "A1",
-            [GOOGLE_COLUMNS]
-        )
-
-    return worksheet
-
-
-# ============================================================
-# DURATION HELPERS
+# HELPER FUNCTIONS
 # ============================================================
 
 def duration_to_seconds(value):
+    """
+    Convert HH:MM:SS duration into seconds.
+
+    Examples:
+        00:00:10 -> 10
+        00:02:35 -> 155
+        01:05:10 -> 3910
+    """
 
     if pd.isna(value):
         return 0
@@ -138,46 +100,39 @@ def duration_to_seconds(value):
         return 0
 
     try:
-
         parts = value.split(":")
 
         if len(parts) == 3:
-
             hours = int(parts[0])
             minutes = int(parts[1])
-            seconds = float(parts[2])
+            seconds = int(float(parts[2]))
 
-            return int(
-                hours * 3600 +
-                minutes * 60 +
-                seconds
-            )
+            return hours * 3600 + minutes * 60 + seconds
 
-        elif len(parts) == 2:
-
+        if len(parts) == 2:
             minutes = int(parts[0])
-            seconds = float(parts[1])
+            seconds = int(float(parts[1]))
 
-            return int(
-                minutes * 60 +
-                seconds
-            )
+            return minutes * 60 + seconds
 
-        else:
-
-            return int(float(value))
+        return float(value)
 
     except Exception:
-
         return 0
 
 
 def seconds_to_hhmmss(seconds):
+    """
+    Convert seconds into HH:MM:SS.
+    """
 
     if pd.isna(seconds):
         return "00:00:00"
 
-    seconds = int(round(float(seconds)))
+    try:
+        seconds = int(round(float(seconds)))
+    except Exception:
+        return "00:00:00"
 
     hours = seconds // 3600
     minutes = (seconds % 3600) // 60
@@ -186,68 +141,85 @@ def seconds_to_hhmmss(seconds):
     return f"{hours:02d}:{minutes:02d}:{secs:02d}"
 
 
-def format_average_seconds(value):
+def format_average_seconds(seconds):
+    """
+    Format an average duration as HH:MM:SS.
+    """
 
-    if pd.isna(value):
+    if pd.isna(seconds):
         return "00:00:00"
 
-    return seconds_to_hhmmss(value)
+    return seconds_to_hhmmss(seconds)
 
 
-# ============================================================
-# CLEAN TEXT
-# ============================================================
+def clean_dataframe_strings(df):
+    """
+    Clean whitespace from string columns.
+    """
 
-def clean_text_columns(df):
+    df = df.copy()
 
-    for column in df.columns:
+    for col in df.columns:
+        if df[col].dtype == "object":
+            df[col] = (
+                df[col]
+                .fillna("")
+                .astype(str)
+                .str.strip()
+            )
 
-        df[column] = (
-            df[column]
+    return df
+
+
+def replace_blank_agents(df):
+    """
+    Replace blank Username values with 'Call Dropped'.
+    """
+
+    df = df.copy()
+
+    if "Username" in df.columns:
+
+        df["Username"] = (
+            df["Username"]
             .fillna("")
             .astype(str)
             .str.strip()
         )
 
-    return df
+        blank_mask = (
+            df["Username"].eq("")
+            | df["Username"].str.lower().isin(
+                ["nan", "none", "null", "na", "n/a"]
+            )
+        )
 
-
-# ============================================================
-# NORMALISE AGENT NAME
-# ============================================================
-
-def normalise_agent_names(df):
-
-    if "Username" not in df.columns:
-        return df
-
-    df["Username"] = (
-        df["Username"]
-        .fillna("")
-        .astype(str)
-        .str.strip()
-    )
-
-    df.loc[
-        df["Username"].eq(""),
-        "Username"
-    ] = "Call Dropped"
+        df.loc[blank_mask, "Username"] = "Call Dropped"
 
     return df
 
 
-# ============================================================
-# PROCESS ACD DATA
-# ============================================================
-
-def process_acd_data(df):
+def prepare_uploaded_data(df):
+    """
+    Prepare a newly uploaded ACD CSV.
+    """
 
     df = df.copy()
 
-    df = clean_text_columns(df)
+    # --------------------------------------------------------
+    # Clean strings
+    # --------------------------------------------------------
+
+    df = clean_dataframe_strings(df)
 
     # --------------------------------------------------------
-    # Call ID
+    # Replace blank agents
+    # --------------------------------------------------------
+
+    df = replace_blank_agents(df)
+
+    # --------------------------------------------------------
+    # Remove rows without Call ID
     # --------------------------------------------------------
 
     df["Call ID"] = (
@@ -259,112 +231,361 @@ def process_acd_data(df):
 
     df = df[df["Call ID"] != ""].copy()
 
-    # One row per Call ID within upload
+    # --------------------------------------------------------
+    # Deduplicate within upload
+    # --------------------------------------------------------
+
     df = df.drop_duplicates(
         subset=["Call ID"],
-        keep="first"
-    )
+        keep="last"
+    ).copy()
 
     # --------------------------------------------------------
-    # Agent
+    # Parse Call Time
     # --------------------------------------------------------
 
-    df = normalise_agent_names(df)
-
-    # --------------------------------------------------------
-    # Call Time
-    # --------------------------------------------------------
-
-    df["Parsed Call Time"] = pd.to_datetime(
+    df["Call Time Parsed"] = pd.to_datetime(
         df["Call Time"],
         dayfirst=True,
         errors="coerce"
     )
 
-    df["Call Date"] = df["Parsed Call Time"].dt.date
+    # --------------------------------------------------------
+    # Date and time fields
+    # --------------------------------------------------------
 
-    df["Call Time Only"] = (
-        df["Parsed Call Time"].dt.time
+    df["Call Date"] = df["Call Time Parsed"].dt.strftime(
+        "%d-%m-%Y"
+    )
+
+    df["Call Time Only"] = df["Call Time Parsed"].dt.strftime(
+        "%H:%M:%S"
     )
 
     # --------------------------------------------------------
-    # Durations
+    # Duration calculations
     # --------------------------------------------------------
 
-    df["Talk Seconds"] = df[
-        "User Talk Time"
-    ].apply(duration_to_seconds)
+    talk_seconds = df["User Talk Time"].apply(
+        duration_to_seconds
+    )
 
-    df["Hold Seconds"] = df[
-        "User Hold Duration"
-    ].apply(duration_to_seconds)
+    hold_seconds = df["User Hold Duration"].apply(
+        duration_to_seconds
+    )
 
-    df["ACW Seconds"] = df[
-        "ACW Duration"
-    ].apply(duration_to_seconds)
+    acw_seconds = df["ACW Duration"].apply(
+        duration_to_seconds
+    )
 
-    df["ASA Seconds"] = df[
-        "Total Wait Time"
-    ].apply(duration_to_seconds)
+    asa_seconds = df["Total Wait Time"].apply(
+        duration_to_seconds
+    )
 
     # --------------------------------------------------------
-    # AHT
+    # KPI calculations
     #
-    # AHT =
-    # User Talk Time
-    # + User Hold Duration
-    # + ACW Duration
+    # AHT = User Talk Time
+    #     + User Hold Duration
+    #     + ACW Duration
+    #
+    # ASA = Total Wait Time
+    #
+    # ACW = ACW Duration
     # --------------------------------------------------------
 
     df["AHT Seconds"] = (
-        df["Talk Seconds"]
-        + df["Hold Seconds"]
-        + df["ACW Seconds"]
+        talk_seconds
+        + hold_seconds
+        + acw_seconds
     )
 
-    # --------------------------------------------------------
-    # Display durations
-    # --------------------------------------------------------
+    df["AHT"] = df["AHT Seconds"].apply(
+        seconds_to_hhmmss
+    )
 
-    df["AHT"] = df[
-        "AHT Seconds"
-    ].apply(seconds_to_hhmmss)
+    df["ASA Seconds"] = asa_seconds
 
-    df["ASA"] = df[
-        "ASA Seconds"
-    ].apply(seconds_to_hhmmss)
+    df["ASA"] = df["ASA Seconds"].apply(
+        seconds_to_hhmmss
+    )
 
-    df["ACW"] = df[
-        "ACW Seconds"
-    ].apply(seconds_to_hhmmss)
+    df["ACW Seconds"] = acw_seconds
+
+    df["ACW"] = df["ACW Seconds"].apply(
+        seconds_to_hhmmss
+    )
 
     # --------------------------------------------------------
     # Upload date
     # --------------------------------------------------------
 
     df["Upload Date"] = datetime.now().strftime(
-        "%d-%m-%Y %H:%M:%S"
+        "%d-%m-%Y"
     )
 
-    # Remove temporary calculation columns
-    df = df.drop(
-        columns=[
-            "Parsed Call Time",
-            "Talk Seconds",
-            "Hold Seconds",
-        ],
+    # --------------------------------------------------------
+    # Remove temporary parsed column
+    # --------------------------------------------------------
+
+    df.drop(
+        columns=["Call Time Parsed"],
+        inplace=True,
         errors="ignore"
     )
 
-    # Make sure final columns are exactly in Google order
-    for column in GOOGLE_COLUMNS:
+    # --------------------------------------------------------
+    # Make sure all expected columns exist
+    # --------------------------------------------------------
 
-        if column not in df.columns:
-            df[column] = ""
+    for col in ALL_COLUMNS:
 
-    df = df[GOOGLE_COLUMNS]
+        if col not in df.columns:
+            df[col] = ""
+
+    # --------------------------------------------------------
+    # Keep exact column order
+    # --------------------------------------------------------
+
+    df = df[ALL_COLUMNS].copy()
 
     return df
+
+
+def parse_historical_dataframe(df):
+    """
+    Prepare historical Google Sheet data for dashboard use.
+    """
+
+    df = df.copy()
+
+    if df.empty:
+        return df
+
+    df = clean_dataframe_strings(df)
+
+    # --------------------------------------------------------
+    # Blank agent -> Call Dropped
+    # --------------------------------------------------------
+
+    df = replace_blank_agents(df)
+
+    # --------------------------------------------------------
+    # Parse Call Date
+    #
+    # Historical Google Sheet may contain:
+    # 2026-09-01
+    # 2026-09-01 00:00:00
+    # 01-09-2026
+    # etc.
+    # --------------------------------------------------------
+
+    if "Call Date" in df.columns:
+
+        df["_CallDateParsed"] = pd.to_datetime(
+            df["Call Date"],
+            dayfirst=True,
+            errors="coerce"
+        )
+
+    else:
+
+        df["_CallDateParsed"] = pd.NaT
+
+    # --------------------------------------------------------
+    # Parse Call Time
+    # --------------------------------------------------------
+
+    if "Call Time" in df.columns:
+
+        call_time_parsed = pd.to_datetime(
+            df["Call Time"],
+            dayfirst=True,
+            errors="coerce"
+        )
+
+        # If Call Date could not be parsed from the calculated
+        # field, use Call Time as the source.
+        df["_CallDateParsed"] = df["_CallDateParsed"].fillna(
+            call_time_parsed.dt.normalize()
+        )
+
+        # Time only from Call Time
+        df["_TimeParsed"] = call_time_parsed.dt.time
+
+    else:
+
+        df["_TimeParsed"] = pd.NaT
+
+    # --------------------------------------------------------
+    # Format Call Date for display
+    # --------------------------------------------------------
+
+    df["Call Date"] = df["_CallDateParsed"].dt.strftime(
+        "%d-%m-%Y"
+    )
+
+    # --------------------------------------------------------
+    # Ensure Call Time Only exists
+    # --------------------------------------------------------
+
+    if "Call Time Only" not in df.columns:
+
+        df["Call Time Only"] = ""
+
+    # Fill missing Call Time Only from Call Time
+    missing_time = (
+        df["Call Time Only"].fillna("").astype(str).str.strip()
+        == ""
+    )
+
+    if "Call Time" in df.columns:
+
+        formatted_times = pd.to_datetime(
+            df["Call Time"],
+            dayfirst=True,
+            errors="coerce"
+        ).dt.strftime("%H:%M:%S")
+
+        df.loc[missing_time, "Call Time Only"] = (
+            formatted_times.loc[missing_time]
+        )
+
+    # --------------------------------------------------------
+    # Convert KPI seconds columns to numeric
+    # --------------------------------------------------------
+
+    for col in [
+        "AHT Seconds",
+        "ASA Seconds",
+        "ACW Seconds"
+    ]:
+
+        if col in df.columns:
+
+            df[col] = pd.to_numeric(
+                df[col],
+                errors="coerce"
+            ).fillna(0)
+
+    # --------------------------------------------------------
+    # If calculated seconds are missing, recalculate
+    # --------------------------------------------------------
+
+    if "AHT Seconds" not in df.columns:
+        df["AHT Seconds"] = 0
+
+    if "ASA Seconds" not in df.columns:
+        df["ASA Seconds"] = 0
+
+    if "ACW Seconds" not in df.columns:
+        df["ACW Seconds"] = 0
+
+    # --------------------------------------------------------
+    # Recalculate missing / zero KPI values from source data
+    # --------------------------------------------------------
+
+    if "User Talk Time" in df.columns:
+        talk = df["User Talk Time"].apply(
+            duration_to_seconds
+        )
+    else:
+        talk = pd.Series(
+            0,
+            index=df.index
+        )
+
+    if "User Hold Duration" in df.columns:
+        hold = df["User Hold Duration"].apply(
+            duration_to_seconds
+        )
+    else:
+        hold = pd.Series(
+            0,
+            index=df.index
+        )
+
+    if "ACW Duration" in df.columns:
+        acw = df["ACW Duration"].apply(
+            duration_to_seconds
+        )
+    else:
+        acw = pd.Series(
+            0,
+            index=df.index
+        )
+
+    if "Total Wait Time" in df.columns:
+        asa = df["Total Wait Time"].apply(
+            duration_to_seconds
+        )
+    else:
+        asa = pd.Series(
+            0,
+            index=df.index
+        )
+
+    # Calculate directly to ensure historical data is correct.
+    df["AHT Seconds"] = talk + hold + acw
+    df["ASA Seconds"] = asa
+    df["ACW Seconds"] = acw
+
+    df["AHT"] = df["AHT Seconds"].apply(
+        seconds_to_hhmmss
+    )
+
+    df["ASA"] = df["ASA Seconds"].apply(
+        seconds_to_hhmmss
+    )
+
+    df["ACW"] = df["ACW Seconds"].apply(
+        seconds_to_hhmmss
+    )
+
+    return df
+
+
+# ============================================================
+# GOOGLE SHEETS CONNECTION
+# ============================================================
+
+@st.cache_resource
+def get_google_sheet():
+
+    credentials = Credentials.from_service_account_info(
+        st.secrets["gcp_service_account"],
+        scopes=[
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive",
+        ],
+    )
+
+    client = gspread.authorize(credentials)
+
+    spreadsheet = client.open_by_key(
+        SPREADSHEET_ID
+    )
+
+    try:
+
+        worksheet = spreadsheet.worksheet(
+            WORKSHEET_NAME
+        )
+
+    except gspread.WorksheetNotFound:
+
+        worksheet = spreadsheet.add_worksheet(
+            title=WORKSHEET_NAME,
+            rows=1000,
+            cols=len(ALL_COLUMNS)
+        )
+
+        worksheet.update(
+            "A1",
+            [ALL_COLUMNS]
+        )
+
+    return worksheet
 
 
 # ============================================================
@@ -374,226 +595,97 @@ def process_acd_data(df):
 @st.cache_data(ttl=60)
 def load_historical_data():
 
-    worksheet = get_worksheet()
+    worksheet = get_google_sheet()
 
     records = worksheet.get_all_records()
 
     if not records:
-
-        return pd.DataFrame(columns=GOOGLE_COLUMNS)
+        return pd.DataFrame(
+            columns=ALL_COLUMNS
+        )
 
     df = pd.DataFrame(records)
 
-    # Ensure expected columns exist
-    for column in GOOGLE_COLUMNS:
+    # Make sure expected columns exist
+    for col in ALL_COLUMNS:
 
-        if column not in df.columns:
-            df[column] = ""
+        if col not in df.columns:
+            df[col] = ""
 
-    df = df[GOOGLE_COLUMNS]
+    df = df[ALL_COLUMNS].copy()
 
-    df = clean_text_columns(df)
-
-    # --------------------------------------------------------
-    # Fix blank agent names in existing historical data
-    # --------------------------------------------------------
-
-    df = normalise_agent_names(df)
-
-    # --------------------------------------------------------
-    # Parse date/time
-    # --------------------------------------------------------
-
-    df["Parsed Call Time"] = pd.to_datetime(
-        df["Call Time"],
-        dayfirst=True,
-        errors="coerce"
+    df = parse_historical_dataframe(
+        df
     )
-
-    df["Call Date"] = df["Parsed Call Time"].dt.date
-
-    df["Call Time Only"] = (
-        df["Parsed Call Time"].dt.time
-    )
-
-    # --------------------------------------------------------
-    # Recalculate KPI seconds
-    #
-    # This also protects against older rows that may not
-    # have had the calculated fields populated correctly.
-    # --------------------------------------------------------
-
-    df["Talk Seconds"] = df[
-        "User Talk Time"
-    ].apply(duration_to_seconds)
-
-    df["Hold Seconds"] = df[
-        "User Hold Duration"
-    ].apply(duration_to_seconds)
-
-    df["ACW Seconds"] = df[
-        "ACW Duration"
-    ].apply(duration_to_seconds)
-
-    df["ASA Seconds"] = df[
-        "Total Wait Time"
-    ].apply(duration_to_seconds)
-
-    df["AHT Seconds"] = (
-        df["Talk Seconds"]
-        + df["Hold Seconds"]
-        + df["ACW Seconds"]
-    )
-
-    df["AHT"] = df[
-        "AHT Seconds"
-    ].apply(seconds_to_hhmmss)
-
-    df["ASA"] = df[
-        "ASA Seconds"
-    ].apply(seconds_to_hhmmss)
-
-    df["ACW"] = df[
-        "ACW Seconds"
-    ].apply(seconds_to_hhmmss)
 
     return df
 
 
 # ============================================================
-# UPLOAD SECTION
+# APPEND NEW DATA
 # ============================================================
 
-st.subheader("📤 Upload ACD Report")
+def append_new_data(uploaded_df):
 
-uploaded_file = st.file_uploader(
-    "Upload ACD Call Details CSV",
-    type=["csv"],
-    help="Upload the fixed-format ACD call-detail CSV report."
-)
+    worksheet = get_google_sheet()
 
-
-if uploaded_file is not None:
+    # --------------------------------------------------------
+    # Existing Call IDs
+    # --------------------------------------------------------
 
     try:
 
-        uploaded_df = pd.read_csv(
-            uploaded_file,
-            dtype=str
+        existing_call_ids = worksheet.col_values(6)
+
+        existing_call_ids = set(
+            str(x).strip()
+            for x in existing_call_ids[1:]
+            if str(x).strip()
         )
 
-        uploaded_df.columns = (
-            uploaded_df.columns
-            .astype(str)
-            .str.strip()
+    except Exception:
+
+        existing_call_ids = set()
+
+    # --------------------------------------------------------
+    # Find new calls only
+    # --------------------------------------------------------
+
+    new_df = uploaded_df[
+        ~uploaded_df["Call ID"].isin(
+            existing_call_ids
         )
+    ].copy()
 
-        missing_columns = [
-            column
-            for column in EXPECTED_COLUMNS
-            if column not in uploaded_df.columns
-        ]
+    if new_df.empty:
 
-        if missing_columns:
+        return 0
 
-            st.error(
-                "The uploaded CSV is missing required columns:\n\n"
-                + "\n".join(
-                    f"- {column}"
-                    for column in missing_columns
-                )
-            )
+    # --------------------------------------------------------
+    # Append to Google Sheet
+    # --------------------------------------------------------
 
-        else:
+    rows = new_df[
+        ALL_COLUMNS
+    ].fillna("").astype(str).values.tolist()
 
-            uploaded_df = uploaded_df[
-                EXPECTED_COLUMNS
-            ].copy()
+    worksheet.append_rows(
+        rows,
+        value_input_option="USER_ENTERED"
+    )
 
-            processed_df = process_acd_data(
-                uploaded_df
-            )
+    return len(new_df)
 
-            worksheet = get_worksheet()
 
-            # ------------------------------------------------
-            # Existing Call IDs
-            # Call ID is column F = column 6
-            # ------------------------------------------------
+# ============================================================
+# SIDEBAR
+# ============================================================
 
-            existing_call_ids = set(
-                worksheet.col_values(6)[1:]
-            )
+st.sidebar.title("⚙️ Filters")
 
-            existing_call_ids = {
-                str(x).strip()
-                for x in existing_call_ids
-                if str(x).strip()
-            }
-
-            processed_call_ids = set(
-                processed_df["Call ID"]
-                .astype(str)
-                .str.strip()
-            )
-
-            new_df = processed_df[
-                ~processed_df["Call ID"].isin(
-                    existing_call_ids
-                )
-            ].copy()
-
-            duplicate_count = (
-                len(processed_df)
-                - len(new_df)
-            )
-
-            # ------------------------------------------------
-            # Append new rows
-            # ------------------------------------------------
-
-            if len(new_df) > 0:
-
-                rows_to_append = (
-                    new_df
-                    .fillna("")
-                    .astype(str)
-                    .values
-                    .tolist()
-                )
-
-                worksheet.append_rows(
-                    rows_to_append,
-                    value_input_option="USER_ENTERED"
-                )
-
-                st.success(
-                    f"Upload complete — {len(new_df):,} new "
-                    f"calls added to Google Sheets."
-                )
-
-                if duplicate_count > 0:
-
-                    st.info(
-                        f"{duplicate_count:,} duplicate/existing "
-                        f"Call ID(s) were skipped."
-                    )
-
-                # Clear cached historical data
-                load_historical_data.clear()
-
-            else:
-
-                st.info(
-                    "No new calls were added. "
-                    "All uploaded Call IDs already exist."
-                )
-
-    except Exception as e:
-
-        st.error(
-            f"Error processing upload: {e}"
-        )
+st.sidebar.markdown(
+    "Use the filters below to refine the dashboard."
+)
 
 
 # ============================================================
@@ -602,250 +694,444 @@ if uploaded_file is not None:
 
 try:
 
-    df = load_historical_data()
+    historical_df = load_historical_data()
 
 except Exception as e:
 
     st.error(
-        f"Unable to load Google Sheets data: {e}"
-    )
-
-    st.stop()
-
-
-if df.empty:
-
-    st.info(
-        "No ACD data is available yet. "
-        "Upload an ACD CSV report above."
+        f"Unable to connect to Google Sheets.\n\n{e}"
     )
 
     st.stop()
 
 
 # ============================================================
-# ENSURE DATE/TIME DATA IS CORRECT
+# CSV UPLOAD
 # ============================================================
 
-df["Parsed Call Time"] = pd.to_datetime(
-    df["Call Time"],
-    dayfirst=True,
-    errors="coerce"
+st.sidebar.markdown("---")
+
+st.sidebar.subheader("📤 Upload ACD CSV")
+
+uploaded_file = st.sidebar.file_uploader(
+    "Upload ACD Call Details CSV",
+    type=["csv"]
 )
 
-df["Call Date"] = (
-    df["Parsed Call Time"]
-    .dt.date
+
+if uploaded_file is not None:
+
+    try:
+
+        uploaded_raw = pd.read_csv(
+            uploaded_file,
+            dtype=str
+        )
+
+        # ----------------------------------------------------
+        # Validate source columns
+        # ----------------------------------------------------
+
+        missing_columns = [
+            col
+            for col in SOURCE_COLUMNS
+            if col not in uploaded_raw.columns
+        ]
+
+        if missing_columns:
+
+            st.error(
+                "The uploaded CSV is missing these "
+                f"required columns:\n\n"
+                + "\n".join(
+                    f"- {col}"
+                    for col in missing_columns
+                )
+            )
+
+        else:
+
+            prepared_upload = prepare_uploaded_data(
+                uploaded_raw
+            )
+
+            # ------------------------------------------------
+            # Append only new Call IDs
+            # ------------------------------------------------
+
+            with st.spinner(
+                "Checking Google Sheets and uploading new calls..."
+            ):
+
+                added_count = append_new_data(
+                    prepared_upload
+                )
+
+            # ------------------------------------------------
+            # Refresh cached historical data
+            # ------------------------------------------------
+
+            load_historical_data.clear()
+
+            historical_df = load_historical_data()
+
+            if added_count > 0:
+
+                st.success(
+                    f"Successfully added {added_count:,} "
+                    f"new call record(s) to Google Sheets."
+                )
+
+            else:
+
+                st.info(
+                    "No new calls found. "
+                    "All uploaded Call IDs already exist."
+                )
+
+    except Exception as e:
+
+        st.error(
+            f"Error processing uploaded CSV:\n\n{e}"
+        )
+
+
+# ============================================================
+# MAIN TITLE
+# ============================================================
+
+st.title("📞 ACD Time & Agent Performance")
+
+st.caption(
+    "ACD call performance dashboard using historical "
+    "Google Sheets data."
 )
 
-df["Call Time Only"] = (
-    df["Parsed Call Time"]
-    .dt.time
-)
-
-df = normalise_agent_names(df)
-
 
 # ============================================================
-# TOP-LEVEL FILTERS
+# TOP DATE + TIME FILTER
 # ============================================================
 
-st.markdown("---")
+st.markdown("### 📅 Dashboard Date & Time Filter")
 
-st.subheader("🔎 Dashboard Filters")
+# ------------------------------------------------------------
+# Determine available dates
+# ------------------------------------------------------------
 
-filter_col1, filter_col2, filter_col3, filter_col4 = st.columns(4)
+if not historical_df.empty:
 
+    valid_dates = historical_df[
+        "_CallDateParsed"
+    ].dropna()
 
-# ============================================================
-# DATE FILTER
-# ============================================================
+else:
 
-valid_dates = df["Call Date"].dropna()
+    valid_dates = pd.Series(
+        dtype="datetime64[ns]"
+    )
+
 
 if len(valid_dates) > 0:
 
-    min_date = valid_dates.min()
-    max_date = valid_dates.max()
+    min_available_date = (
+        valid_dates.min().date()
+    )
+
+    max_available_date = (
+        valid_dates.max().date()
+    )
 
 else:
 
-    min_date = date.today()
-    max_date = date.today()
+    min_available_date = date.today()
+    max_available_date = date.today()
 
 
-with filter_col1:
+date_col1, date_col2, time_col1, time_col2 = st.columns(4)
 
-    selected_dates = st.date_input(
-        "📅 Date",
-        value=(min_date, max_date),
-        min_value=min_date,
-        max_value=max_date,
+
+with date_col1:
+
+    start_date = st.date_input(
+        "From Date",
+        value=min_available_date,
+        min_value=min_available_date,
+        max_value=max_available_date,
         format="DD-MM-YYYY",
-        help="Filter all dashboard values by Call Date."
+        key="top_start_date"
     )
 
 
-# ============================================================
-# TIME FILTER
-# ============================================================
+with date_col2:
 
-with filter_col2:
-
-    selected_time_range = st.slider(
-        "🕐 Time",
-        min_value=time(0, 0),
-        max_value=time(23, 59),
-        value=(
-            time(0, 0),
-            time(23, 59)
-        ),
-        format="HH:mm",
-        help="Filter all dashboard values by Call Time."
+    end_date = st.date_input(
+        "To Date",
+        value=max_available_date,
+        min_value=min_available_date,
+        max_value=max_available_date,
+        format="DD-MM-YYYY",
+        key="top_end_date"
     )
 
 
-# ============================================================
-# QUEUE FILTER
-# ============================================================
+with time_col1:
 
-queue_values = sorted(
-    [
-        str(x).strip()
-        for x in df["Queue Name"]
-        .dropna()
-        .unique()
-        if str(x).strip()
-    ]
-)
-
-with filter_col3:
-
-    selected_queues = st.multiselect(
-        "📥 Queue Name",
-        options=queue_values,
-        default=queue_values,
-        help="Filter all dashboard values by Queue Name."
+    start_time = st.time_input(
+        "From Time",
+        value=time(0, 0),
+        key="top_start_time"
     )
 
 
-# ============================================================
-# DISPOSITION FILTER
-# ============================================================
+with time_col2:
 
-disposition_values = sorted(
-    [
-        str(x).strip()
-        for x in df["User Disposition Code"]
-        .dropna()
-        .unique()
-        if str(x).strip()
-    ]
-)
-
-with filter_col4:
-
-    selected_dispositions = st.multiselect(
-        "🏷️ User Disposition Code",
-        options=disposition_values,
-        default=disposition_values,
-        help=(
-            "Filter all dashboard values by "
-            "User Disposition Code."
-        )
+    end_time = st.time_input(
+        "To Time",
+        value=time(23, 59, 59),
+        key="top_end_time"
     )
-
-
-# ============================================================
-# HANDLE DATE INPUT
-# ============================================================
-
-if isinstance(selected_dates, tuple):
-
-    if len(selected_dates) == 2:
-
-        filter_start_date = selected_dates[0]
-        filter_end_date = selected_dates[1]
-
-    else:
-
-        filter_start_date = selected_dates[0]
-        filter_end_date = selected_dates[0]
-
-else:
-
-    filter_start_date = selected_dates
-    filter_end_date = selected_dates
-
-
-# ============================================================
-# APPLY TOP-LEVEL FILTERS
-#
-# IMPORTANT:
-# Everything below uses filtered_df.
-# Therefore ALL dashboard values update together.
-# ============================================================
-
-filtered_df = df.copy()
 
 
 # ------------------------------------------------------------
-# Date
+# Fix reversed date selection
 # ------------------------------------------------------------
 
-filtered_df = filtered_df[
-    filtered_df["Call Date"].notna()
-]
+if start_date > end_date:
 
-filtered_df = filtered_df[
-    (
-        filtered_df["Call Date"]
-        >= filter_start_date
+    st.warning(
+        "From Date cannot be later than To Date."
     )
-    &
-    (
-        filtered_df["Call Date"]
-        <= filter_end_date
-    )
-]
+
+    st.stop()
 
 
-# ------------------------------------------------------------
-# Time
-# ------------------------------------------------------------
+# ============================================================
+# APPLY DATE + TIME FILTER FIRST
+# ============================================================
 
-start_time = selected_time_range[0]
-end_time = selected_time_range[1]
+filtered_df = historical_df.copy()
 
-if start_time <= end_time:
 
-    filtered_df = filtered_df[
-        (
-            filtered_df["Call Time Only"]
-            >= start_time
-        )
+if not filtered_df.empty:
+
+    # --------------------------------------------------------
+    # Date filter
+    # --------------------------------------------------------
+
+    date_mask = (
+        (filtered_df["_CallDateParsed"].dt.date >= start_date)
         &
-        (
-            filtered_df["Call Time Only"]
-            <= end_time
+        (filtered_df["_CallDateParsed"].dt.date <= end_date)
+    )
+
+    filtered_df = filtered_df[
+        date_mask
+    ].copy()
+
+    # --------------------------------------------------------
+    # Time filter
+    #
+    # Supports normal ranges:
+    # 09:00 -> 18:00
+    #
+    # Also supports overnight:
+    # 22:00 -> 06:00
+    # --------------------------------------------------------
+
+    if "_TimeParsed" in filtered_df.columns:
+
+        def time_to_seconds(t):
+            if pd.isna(t):
+                return np.nan
+
+            return (
+                t.hour * 3600
+                + t.minute * 60
+                + t.second
+            )
+
+        filtered_df["_TimeSeconds"] = (
+            filtered_df["_TimeParsed"]
+            .apply(time_to_seconds)
         )
-    ]
+
+        start_seconds = (
+            start_time.hour * 3600
+            + start_time.minute * 60
+            + start_time.second
+        )
+
+        end_seconds = (
+            end_time.hour * 3600
+            + end_time.minute * 60
+            + end_time.second
+        )
+
+        if start_seconds <= end_seconds:
+
+            time_mask = (
+                (filtered_df["_TimeSeconds"] >= start_seconds)
+                &
+                (filtered_df["_TimeSeconds"] <= end_seconds)
+            )
+
+        else:
+
+            # Overnight range
+            time_mask = (
+                (filtered_df["_TimeSeconds"] >= start_seconds)
+                |
+                (filtered_df["_TimeSeconds"] <= end_seconds)
+            )
+
+        filtered_df = filtered_df[
+            time_mask
+        ].copy()
+
+
+# ============================================================
+# SIDEBAR SECONDARY FILTERS
+# ============================================================
+
+st.sidebar.markdown("---")
+
+# ------------------------------------------------------------
+# Agent
+# ------------------------------------------------------------
+
+if not historical_df.empty:
+
+    agent_values = sorted(
+        historical_df["Username"]
+        .fillna("Call Dropped")
+        .replace("", "Call Dropped")
+        .unique()
+        .tolist()
+    )
 
 else:
 
-    # Supports overnight ranges such as 22:00 -> 06:00
+    agent_values = []
+
+
+selected_agents = st.sidebar.multiselect(
+    "👤 Agent",
+    options=agent_values,
+    default=[]
+)
+
+
+# ------------------------------------------------------------
+# Campaign
+# ------------------------------------------------------------
+
+if not historical_df.empty:
+
+    campaign_values = sorted(
+        historical_df["Campaign Name"]
+        .fillna("")
+        .astype(str)
+        .replace("", "Unknown")
+        .unique()
+        .tolist()
+    )
+
+else:
+
+    campaign_values = []
+
+
+selected_campaigns = st.sidebar.multiselect(
+    "📣 Campaign",
+    options=campaign_values,
+    default=[]
+)
+
+
+# ------------------------------------------------------------
+# Queue
+# ------------------------------------------------------------
+
+if not historical_df.empty:
+
+    queue_values = sorted(
+        historical_df["Queue Name"]
+        .fillna("")
+        .astype(str)
+        .replace("", "Unknown")
+        .unique()
+        .tolist()
+    )
+
+else:
+
+    queue_values = []
+
+
+selected_queues = st.sidebar.multiselect(
+    "📋 Queue",
+    options=queue_values,
+    default=[]
+)
+
+
+# ------------------------------------------------------------
+# Disposition
+# ------------------------------------------------------------
+
+if not historical_df.empty:
+
+    disposition_values = sorted(
+        historical_df[
+            "User Disposition Code"
+        ]
+        .fillna("")
+        .astype(str)
+        .replace("", "Unknown")
+        .unique()
+        .tolist()
+    )
+
+else:
+
+    disposition_values = []
+
+
+selected_dispositions = st.sidebar.multiselect(
+    "🏷️ Disposition",
+    options=disposition_values,
+    default=[]
+)
+
+
+# ============================================================
+# APPLY SIDEBAR FILTERS
+# ============================================================
+
+# ------------------------------------------------------------
+# Agent
+# ------------------------------------------------------------
+
+if selected_agents:
 
     filtered_df = filtered_df[
-        (
-            filtered_df["Call Time Only"]
-            >= start_time
+        filtered_df["Username"].isin(
+            selected_agents
         )
-        |
-        (
-            filtered_df["Call Time Only"]
-            <= end_time
-        )
-    ]
+    ].copy()
+
+
+# ------------------------------------------------------------
+# Campaign
+# ------------------------------------------------------------
+
+if selected_campaigns:
+
+    filtered_df = filtered_df[
+        filtered_df["Campaign Name"]
+        .replace("", "Unknown")
+        .isin(selected_campaigns)
+    ].copy()
 
 
 # ------------------------------------------------------------
@@ -855,14 +1141,10 @@ else:
 if selected_queues:
 
     filtered_df = filtered_df[
-        filtered_df["Queue Name"].isin(
-            selected_queues
-        )
-    ]
-
-else:
-
-    filtered_df = filtered_df.iloc[0:0]
+        filtered_df["Queue Name"]
+        .replace("", "Unknown")
+        .isin(selected_queues)
+    ].copy()
 
 
 # ------------------------------------------------------------
@@ -872,27 +1154,10 @@ else:
 if selected_dispositions:
 
     filtered_df = filtered_df[
-        filtered_df[
-            "User Disposition Code"
-        ].isin(selected_dispositions)
-    ]
-
-else:
-
-    filtered_df = filtered_df.iloc[0:0]
-
-
-# ============================================================
-# FILTER SUMMARY
-# ============================================================
-
-st.caption(
-    f"Showing {len(filtered_df):,} calls "
-    f"from {filter_start_date.strftime('%d-%m-%Y')} "
-    f"to {filter_end_date.strftime('%d-%m-%Y')} "
-    f"between {start_time.strftime('%H:%M')} "
-    f"and {end_time.strftime('%H:%M')}"
-)
+        filtered_df["User Disposition Code"]
+        .replace("", "Unknown")
+        .isin(selected_dispositions)
+    ].copy()
 
 
 # ============================================================
@@ -900,6 +1165,7 @@ st.caption(
 # ============================================================
 
 total_calls = len(filtered_df)
+
 
 if total_calls > 0:
 
@@ -926,6 +1192,8 @@ else:
 # KPI CARDS
 # ============================================================
 
+st.markdown("### 📊 Key Performance Indicators")
+
 col1, col2, col3, col4 = st.columns(4)
 
 
@@ -935,8 +1203,8 @@ with col1:
         "📞 Calls",
         f"{total_calls:,}",
         help=(
-            "Total number of unique calls in the selected "
-            "date/time/queue/disposition filters. "
+            "Total number of unique calls in the "
+            "selected date/time/agent filters.\n\n"
             "Unique Call ID is used to identify each call."
         )
     )
@@ -954,8 +1222,8 @@ with col2:
             "• User Hold Duration\n"
             "• ACW Duration\n\n"
             "Formula:\n"
-            "AHT = User Talk Time + User Hold Duration + "
-            "ACW Duration"
+            "AHT = User Talk Time + User Hold Duration "
+            "+ ACW Duration"
         )
     )
 
@@ -991,16 +1259,16 @@ with col4:
 
 
 # ============================================================
-# NO DATA AFTER FILTER
+# FILTER SUMMARY
 # ============================================================
 
-if filtered_df.empty:
-
-    st.warning(
-        "No calls match the selected filters."
-    )
-
-    st.stop()
+st.caption(
+    f"Showing {len(filtered_df):,} call(s) "
+    f"from {start_date.strftime('%d-%m-%Y')} "
+    f"to {end_date.strftime('%d-%m-%Y')} "
+    f"| {start_time.strftime('%H:%M:%S')} "
+    f"to {end_time.strftime('%H:%M:%S')}"
+)
 
 
 # ============================================================
@@ -1008,68 +1276,64 @@ if filtered_df.empty:
 # ============================================================
 
 st.markdown("---")
-
 st.subheader("👤 Agent Performance")
 
 
-agent_summary = (
-    filtered_df
-    .groupby("Username", dropna=False)
-    .agg(
-        Calls=("Call ID", "count"),
-        Avg_AHT_Seconds=("AHT Seconds", "mean"),
-        Avg_ASA_Seconds=("ASA Seconds", "mean"),
-        Avg_ACW_Seconds=("ACW Seconds", "mean"),
+if not filtered_df.empty:
+
+    agent_performance = (
+        filtered_df
+        .groupby("Username", dropna=False)
+        .agg(
+            Calls=("Call ID", "count"),
+            Average_AHT=("AHT Seconds", "mean"),
+            Average_ASA=("ASA Seconds", "mean"),
+            Average_ACW=("ACW Seconds", "mean"),
+        )
+        .reset_index()
     )
-    .reset_index()
-)
 
+    agent_performance.rename(
+        columns={
+            "Username": "Agent",
+            "Average_AHT": "Average AHT",
+            "Average_ASA": "Average ASA",
+            "Average_ACW": "Average ACW",
+        },
+        inplace=True
+    )
 
-agent_summary["Average AHT"] = (
-    agent_summary["Avg_AHT_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
+    agent_performance["Average AHT"] = (
+        agent_performance["Average AHT"]
+        .apply(format_average_seconds)
+    )
 
-agent_summary["Average ASA"] = (
-    agent_summary["Avg_ASA_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
+    agent_performance["Average ASA"] = (
+        agent_performance["Average ASA"]
+        .apply(format_average_seconds)
+    )
 
-agent_summary["Average ACW"] = (
-    agent_summary["Avg_ACW_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
+    agent_performance["Average ACW"] = (
+        agent_performance["Average ACW"]
+        .apply(format_average_seconds)
+    )
 
-
-agent_summary = agent_summary[
-    [
-        "Username",
+    agent_performance = agent_performance.sort_values(
         "Calls",
-        "Average AHT",
-        "Average ASA",
-        "Average ACW",
-    ]
-]
+        ascending=False
+    )
 
+    st.dataframe(
+        agent_performance,
+        use_container_width=True,
+        hide_index=True
+    )
 
-agent_summary = agent_summary.rename(
-    columns={
-        "Username": "Agent"
-    }
-)
+else:
 
-
-agent_summary = agent_summary.sort_values(
-    "Calls",
-    ascending=False
-)
-
-
-st.dataframe(
-    agent_summary,
-    use_container_width=True,
-    hide_index=True
-)
+    st.info(
+        "No agent performance data for the selected filters."
+    )
 
 
 # ============================================================
@@ -1077,68 +1341,74 @@ st.dataframe(
 # ============================================================
 
 st.markdown("---")
-
 st.subheader("📅 Daily Performance")
 
 
-daily_summary = (
-    filtered_df
-    .groupby("Call Date")
-    .agg(
-        Calls=("Call ID", "count"),
-        Avg_AHT_Seconds=("AHT Seconds", "mean"),
-        Avg_ASA_Seconds=("ASA Seconds", "mean"),
-        Avg_ACW_Seconds=("ACW Seconds", "mean"),
+if not filtered_df.empty:
+
+    daily_performance = (
+        filtered_df
+        .groupby(
+            "_CallDateParsed",
+            dropna=False
+        )
+        .agg(
+            Calls=("Call ID", "count"),
+            Average_AHT=("AHT Seconds", "mean"),
+            Average_ASA=("ASA Seconds", "mean"),
+            Average_ACW=("ACW Seconds", "mean"),
+        )
+        .reset_index()
     )
-    .reset_index()
-)
 
-
-daily_summary["Average AHT"] = (
-    daily_summary["Avg_AHT_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
-
-daily_summary["Average ASA"] = (
-    daily_summary["Avg_ASA_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
-
-daily_summary["Average ACW"] = (
-    daily_summary["Avg_ACW_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
-
-
-daily_summary = daily_summary[
-    [
-        "Call Date",
-        "Calls",
-        "Average AHT",
-        "Average ASA",
-        "Average ACW",
-    ]
-]
-
-
-# ------------------------------------------------------------
-# IMPORTANT:
-# Display date as DD-MM-YYYY
-# ------------------------------------------------------------
-
-daily_summary["Call Date"] = (
-    pd.to_datetime(
-        daily_summary["Call Date"]
+    daily_performance.rename(
+        columns={
+            "_CallDateParsed": "Date",
+            "Average_AHT": "Average AHT",
+            "Average_ASA": "Average ASA",
+            "Average_ACW": "Average ACW",
+        },
+        inplace=True
     )
-    .dt.strftime("%d-%m-%Y")
-)
 
+    # --------------------------------------------------------
+    # dd-mm-yyyy
+    # --------------------------------------------------------
 
-st.dataframe(
-    daily_summary,
-    use_container_width=True,
-    hide_index=True
-)
+    daily_performance["Date"] = (
+        pd.to_datetime(
+            daily_performance["Date"],
+            errors="coerce"
+        )
+        .dt.strftime("%d-%m-%Y")
+    )
+
+    daily_performance["Average AHT"] = (
+        daily_performance["Average AHT"]
+        .apply(format_average_seconds)
+    )
+
+    daily_performance["Average ASA"] = (
+        daily_performance["Average ASA"]
+        .apply(format_average_seconds)
+    )
+
+    daily_performance["Average ACW"] = (
+        daily_performance["Average ACW"]
+        .apply(format_average_seconds)
+    )
+
+    st.dataframe(
+        daily_performance,
+        use_container_width=True,
+        hide_index=True
+    )
+
+else:
+
+    st.info(
+        "No daily performance data for the selected filters."
+    )
 
 
 # ============================================================
@@ -1146,71 +1416,48 @@ st.dataframe(
 # ============================================================
 
 st.markdown("---")
-
 st.subheader("🕐 Hourly Call Distribution")
 
 
-hourly_df = filtered_df.copy()
+if not filtered_df.empty:
 
-hourly_df["Hour"] = (
-    hourly_df["Parsed Call Time"]
-    .dt.hour
-)
+    hourly_df = filtered_df.copy()
 
-
-hourly_summary = (
-    hourly_df
-    .groupby("Hour")
-    .agg(
-        Calls=("Call ID", "count"),
-        Avg_AHT_Seconds=("AHT Seconds", "mean"),
-        Avg_ASA_Seconds=("ASA Seconds", "mean"),
-        Avg_ACW_Seconds=("ACW Seconds", "mean"),
+    hourly_df["Hour"] = (
+        pd.to_datetime(
+            hourly_df["Call Time"],
+            dayfirst=True,
+            errors="coerce"
+        )
+        .dt.hour
     )
-    .reset_index()
-)
 
-
-hourly_summary["Time"] = (
-    hourly_summary["Hour"]
-    .apply(
-        lambda x: f"{int(x):02d}:00"
+    hourly_distribution = (
+        hourly_df
+        .dropna(subset=["Hour"])
+        .groupby("Hour")
+        .size()
+        .reset_index(name="Calls")
     )
-)
 
+    hourly_distribution["Hour"] = (
+        hourly_distribution["Hour"]
+        .apply(
+            lambda x: f"{int(x):02d}:00"
+        )
+    )
 
-hourly_summary["Average AHT"] = (
-    hourly_summary["Avg_AHT_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
+    st.dataframe(
+        hourly_distribution,
+        use_container_width=True,
+        hide_index=True
+    )
 
-hourly_summary["Average ASA"] = (
-    hourly_summary["Avg_ASA_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
+else:
 
-hourly_summary["Average ACW"] = (
-    hourly_summary["Avg_ACW_Seconds"]
-    .apply(seconds_to_hhmmss)
-)
-
-
-hourly_summary = hourly_summary[
-    [
-        "Time",
-        "Calls",
-        "Average AHT",
-        "Average ASA",
-        "Average ACW",
-    ]
-]
-
-
-st.dataframe(
-    hourly_summary,
-    use_container_width=True,
-    hide_index=True
-)
+    st.info(
+        "No hourly data for the selected filters."
+    )
 
 
 # ============================================================
@@ -1218,158 +1465,96 @@ st.dataframe(
 # ============================================================
 
 st.markdown("---")
-
 st.subheader("📋 Detailed Call Records")
 
 
-display_df = filtered_df.copy()
+if not filtered_df.empty:
 
+    display_columns = [
+        "Call ID",
+        "Campaign Name",
+        "Phone",
+        "Call Type",
+        "Answered/Hungup",
+        "Call Date",
+        "Call Time Only",
+        "Queue Name",
+        "Username",
+        "User Disposition Code",
+        "AHT",
+        "ASA",
+        "ACW",
+        "Hangup Details",
+        "Call Notes",
+    ]
 
-# ------------------------------------------------------------
-# Format Call Date
-# ------------------------------------------------------------
+    display_columns = [
+        col
+        for col in display_columns
+        if col in filtered_df.columns
+    ]
 
-display_df["Call Date"] = (
-    pd.to_datetime(
-        display_df["Call Date"],
-        errors="coerce"
+    detailed_df = filtered_df[
+        display_columns
+    ].copy()
+
+    # --------------------------------------------------------
+    # Make absolutely sure dates display as dd-mm-yyyy
+    # --------------------------------------------------------
+
+    if "Call Date" in detailed_df.columns:
+
+        detailed_df["Call Date"] = (
+            pd.to_datetime(
+                detailed_df["Call Date"],
+                dayfirst=True,
+                errors="coerce"
+            )
+            .dt.strftime("%d-%m-%Y")
+        )
+
+    # --------------------------------------------------------
+    # Blank agents -> Call Dropped
+    # --------------------------------------------------------
+
+    if "Username" in detailed_df.columns:
+
+        detailed_df["Username"] = (
+            detailed_df["Username"]
+            .fillna("")
+            .replace("", "Call Dropped")
+        )
+
+    st.dataframe(
+        detailed_df,
+        use_container_width=True,
+        hide_index=True
     )
-    .dt.strftime("%d-%m-%Y")
-)
 
+    # --------------------------------------------------------
+    # Download filtered records
+    # --------------------------------------------------------
 
-# ------------------------------------------------------------
-# Format Call Time
-# ------------------------------------------------------------
+    csv_data = detailed_df.to_csv(
+        index=False
+    ).encode("utf-8")
 
-display_df["Call Time Only"] = (
-    display_df["Call Time Only"]
-    .apply(
-        lambda x:
-        x.strftime("%H:%M:%S")
-        if pd.notna(x)
-        and hasattr(x, "strftime")
-        else ""
+    st.download_button(
+        label="⬇️ Download Filtered Calls CSV",
+        data=csv_data,
+        file_name=(
+            f"ACD_filtered_"
+            f"{start_date.strftime('%d-%m-%Y')}_"
+            f"{end_date.strftime('%d-%m-%Y')}.csv"
+        ),
+        mime="text/csv"
     )
-)
 
+else:
 
-# ------------------------------------------------------------
-# Select useful columns for display
-# ------------------------------------------------------------
-
-detail_columns = [
-    "Call Date",
-    "Call Time Only",
-    "Campaign Name",
-    "Phone",
-    "Call Type",
-    "Call ID",
-    "Answered/Hungup",
-    "Queue Name",
-    "Username",
-    "User Disposition Code",
-    "User Talk Time",
-    "User Hold Duration",
-    "ACW Duration",
-    "AHT",
-    "ASA",
-    "ACW",
-    "Hangup Details",
-    "Call Notes",
-]
-
-
-detail_columns = [
-    column
-    for column in detail_columns
-    if column in display_df.columns
-]
-
-
-detail_display = display_df[
-    detail_columns
-].copy()
-
-
-# Agent column label
-detail_display = detail_display.rename(
-    columns={
-        "Username": "Agent"
-    }
-)
-
-
-st.dataframe(
-    detail_display,
-    use_container_width=True,
-    hide_index=True
-)
-
-
-# ============================================================
-# DOWNLOAD FILTERED DATA
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("⬇️ Export")
-
-
-download_df = filtered_df.copy()
-
-
-# ------------------------------------------------------------
-# Make dates Excel/CSV friendly as DD-MM-YYYY
-# ------------------------------------------------------------
-
-download_df["Call Date"] = (
-    pd.to_datetime(
-        download_df["Call Date"],
-        errors="coerce"
+    st.info(
+        "No call records match the selected filters."
     )
-    .dt.strftime("%d-%m-%Y")
-)
-
-
-download_df["Call Time Only"] = (
-    download_df["Call Time Only"]
-    .apply(
-        lambda x:
-        x.strftime("%H:%M:%S")
-        if pd.notna(x)
-        and hasattr(x, "strftime")
-        else ""
-    )
-)
-
-
-download_df = download_df.drop(
-    columns=[
-        "Parsed Call Time",
-        "Talk Seconds",
-        "Hold Seconds",
-    ],
-    errors="ignore"
-)
-
-
-csv_data = download_df.to_csv(
-    index=False
-).encode("utf-8")
-
-
-st.download_button(
-    label="📥 Download Filtered Calls CSV",
-    data=csv_data,
-    file_name=(
-        f"ACD_Filtered_"
-        f"{filter_start_date.strftime('%d-%m-%Y')}_"
-        f"to_"
-        f"{filter_end_date.strftime('%d-%m-%Y')}.csv"
-    ),
-    mime="text/csv"
-)
 
 
 # ============================================================
@@ -1379,7 +1564,7 @@ st.download_button(
 st.markdown("---")
 
 st.caption(
-    f"Google Sheet: {SPREADSHEET_ID} | "
-    f"Historical records: {len(df):,} | "
-    f"Filtered records: {len(filtered_df):,}"
+    f"Google Sheet: {SPREADSHEET_ID} "
+    f"| Historical records: {len(historical_df):,}"
 )
+
