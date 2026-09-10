@@ -841,7 +841,6 @@ avg_acw = filtered_df[
     "ACW Seconds"
 ].mean()
 
-
 # ============================================================
 # KPI CARDS
 # ============================================================
@@ -852,34 +851,58 @@ with col1:
 
     st.metric(
         "📞 Calls",
-        f"{total_calls:,}"
+        f"{total_calls:,}",
+        help=(
+            "Total number of unique calls in the selected "
+            "date/time/agent filters. "
+            "Unique Call ID is used to identify each call."
+        )
     )
 
 with col2:
 
     st.metric(
         "⏱️ Average AHT",
-        format_average_seconds(avg_aht)
+        format_average_seconds(avg_aht),
+        help=(
+            "Average Handling Time (AHT)\n\n"
+            "Calculated from the ACD report columns:\n"
+            "• User Talk Time\n"
+            "• User Hold Duration\n"
+            "• ACW Duration\n\n"
+            "Formula:\n"
+            "AHT = User Talk Time + User Hold Duration + "
+            "ACW Duration"
+        )
     )
 
 with col3:
 
     st.metric(
         "⚡ Average ASA",
-        format_average_seconds(avg_asa)
+        format_average_seconds(avg_asa),
+        help=(
+            "Average Speed of Answer (ASA)\n\n"
+            "Calculated directly from the ACD report column:\n"
+            "• Total Wait Time\n\n"
+            "Formula:\n"
+            "ASA = Average of Total Wait Time"
+        )
     )
 
 with col4:
 
     st.metric(
         "📝 Average ACW",
-        format_average_seconds(avg_acw)
+        format_average_seconds(avg_acw),
+        help=(
+            "Average After Call Work (ACW)\n\n"
+            "Calculated directly from the ACD report column:\n"
+            "• ACW Duration\n\n"
+            "Formula:\n"
+            "ACW = Average of ACW Duration"
+        )
     )
-
-
-st.divider()
-
-
 # ============================================================
 # AGENT PERFORMANCE
 # ============================================================
