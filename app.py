@@ -1,10 +1,9 @@
-
 import streamlit as st
 import pandas as pd
 import numpy as np
 import gspread
 
-from datetime import datetime, date, time, timedelta
+from datetime import datetime, date, time
 from google.oauth2.service_account import Credentials
 
 
@@ -23,7 +22,9 @@ st.set_page_config(
 # CONFIGURATION
 # ============================================================
 
-SPREADSHEET_ID = "1R7ioNIYj7iAK3kN21WWlrxy9J9qEdRM9GOebCnUQNpI"
+SPREADSHEET_ID = (
+    "1R7ioNIYj7iAK3kN21WWlrxy9J9qEdRM9GOebCnUQNpI"
+)
 
 ACD_WORKSHEET_NAME = "ACD_Data"
 PRODUCTIVITY_WORKSHEET_NAME = "Agent_Productivity"
@@ -104,16 +105,104 @@ PRODUCTIVITY_COLUMNS = [
 ]
 
 
-PRODUCTIVITY_GOOGLE_COLUMNS = PRODUCTIVITY_COLUMNS + [
-    "Upload Date"
-]
+PRODUCTIVITY_GOOGLE_COLUMNS = (
+    PRODUCTIVITY_COLUMNS
+    + ["Upload Date"]
+)
+
+
+# ============================================================
+# CUSTOM CSS / COLOUR CODING
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* Main background */
+    .stApp {
+        background: #f6f8fb;
+    }
+
+    /* Main title */
+    h1 {
+        color: #172033;
+        font-weight: 700;
+    }
+
+    /* Section headings */
+    h2, h3 {
+        color: #233044;
+    }
+
+    /* Tabs */
+    button[data-baseweb="tab"] {
+        font-weight: 650;
+        font-size: 16px;
+    }
+
+    /* Metric cards */
+    div[data-testid="stMetric"] {
+        background: white;
+        border-radius: 12px;
+        padding: 18px 18px 15px 18px;
+        border: 1px solid #e4e9f0;
+        box-shadow: 0 2px 8px rgba(31, 41, 55, 0.06);
+    }
+
+    div[data-testid="stMetricLabel"] {
+        font-weight: 650;
+    }
+
+    div[data-testid="stMetricValue"] {
+        font-weight: 750;
+    }
+
+    /* Expanders */
+    div[data-testid="stExpander"] {
+        border: 1px solid #e2e8f0;
+        border-radius: 10px;
+        background: white;
+    }
+
+    /* Dataframes */
+    div[data-testid="stDataFrame"] {
+        border-radius: 10px;
+        overflow: hidden;
+        border: 1px solid #e3e8ef;
+    }
+
+    /* Filter area */
+    .filter-box {
+        background: white;
+        border: 1px solid #e3e8ef;
+        border-radius: 12px;
+        padding: 8px 14px 12px 14px;
+        margin-bottom: 10px;
+    }
+
+    /* Informational banner */
+    .info-banner {
+        background: #eef6ff;
+        border-left: 5px solid #2f80ed;
+        padding: 10px 14px;
+        border-radius: 6px;
+        margin: 8px 0 14px 0;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 
 # ============================================================
 # TITLE
 # ============================================================
 
-st.title("📞 ACD Time & Agent Performance")
+st.title(
+    "📞 ACD Time & Agent Performance"
+)
 
 st.caption(
     "ACD call performance and agent productivity tracking."
@@ -121,7 +210,7 @@ st.caption(
 
 
 # ============================================================
-# GOOGLE SHEETS CONNECTION
+# GOOGLE SHEETS
 # ============================================================
 
 @st.cache_resource
@@ -132,17 +221,19 @@ def get_google_client():
         "https://www.googleapis.com/auth/drive",
     ]
 
-    credentials = Credentials.from_service_account_info(
-        st.secrets["gcp_service_account"],
-        scopes=scopes
+    credentials = (
+        Credentials.from_service_account_info(
+            st.secrets[
+                "gcp_service_account"
+            ],
+            scopes=scopes
+        )
     )
 
-    return gspread.authorize(credentials)
+    return gspread.authorize(
+        credentials
+    )
 
-
-# ============================================================
-# GET ACD WORKSHEET
-# ============================================================
 
 @st.cache_resource
 def get_acd_worksheet():
@@ -164,7 +255,9 @@ def get_acd_worksheet():
         worksheet = spreadsheet.add_worksheet(
             title=ACD_WORKSHEET_NAME,
             rows=1000,
-            cols=len(ACD_GOOGLE_COLUMNS)
+            cols=len(
+                ACD_GOOGLE_COLUMNS
+            )
         )
 
         worksheet.update(
@@ -174,10 +267,6 @@ def get_acd_worksheet():
 
     return worksheet
 
-
-# ============================================================
-# GET PRODUCTIVITY WORKSHEET
-# ============================================================
 
 @st.cache_resource
 def get_productivity_worksheet():
@@ -199,7 +288,9 @@ def get_productivity_worksheet():
         worksheet = spreadsheet.add_worksheet(
             title=PRODUCTIVITY_WORKSHEET_NAME,
             rows=1000,
-            cols=len(PRODUCTIVITY_GOOGLE_COLUMNS)
+            cols=len(
+                PRODUCTIVITY_GOOGLE_COLUMNS
+            )
         )
 
         worksheet.update(
@@ -246,29 +337,20 @@ def duration_to_seconds(value):
 
         if len(parts) == 3:
 
-            hours = int(parts[0])
-            minutes = int(parts[1])
-            seconds = float(parts[2])
-
             return int(
-                hours * 3600
-                + minutes * 60
-                + seconds
+                int(parts[0]) * 3600
+                + int(parts[1]) * 60
+                + float(parts[2])
             )
 
-        elif len(parts) == 2:
-
-            minutes = int(parts[0])
-            seconds = float(parts[1])
+        if len(parts) == 2:
 
             return int(
-                minutes * 60
-                + seconds
+                int(parts[0]) * 60
+                + float(parts[1])
             )
 
-        else:
-
-            return int(float(value))
+        return int(float(value))
 
     except Exception:
 
@@ -280,10 +362,9 @@ def seconds_to_hhmmss(seconds):
     if pd.isna(seconds):
         return "00:00:00"
 
-    seconds = int(
-        round(
-            float(seconds)
-        )
+    seconds = max(
+        0,
+        int(round(float(seconds)))
     )
 
     hours = seconds // 3600
@@ -306,7 +387,9 @@ def format_average_seconds(value):
     if pd.isna(value):
         return "00:00:00"
 
-    return seconds_to_hhmmss(value)
+    return seconds_to_hhmmss(
+        value
+    )
 
 
 def filter_display_value(value):
@@ -320,6 +403,84 @@ def filter_display_value(value):
         return "(Blank)"
 
     return value
+
+
+# ============================================================
+# TABLE STYLING HELPERS
+# ============================================================
+
+def style_acd_table(df):
+
+    styler = df.style
+
+    if "Calls" in df.columns:
+
+        styler = styler.background_gradient(
+            subset=["Calls"],
+            cmap="Blues"
+        )
+
+    for column in [
+        "Average AHT",
+        "Average ASA",
+        "Average ACW",
+    ]:
+
+        if column in df.columns:
+
+            styler = styler.set_properties(
+                subset=[column],
+                **{
+                    "background-color": "#f2f7ff",
+                    "font-weight": "600"
+                }
+            )
+
+    return styler
+
+
+def style_productivity_table(df):
+
+    styler = df.style
+
+    duration_columns = [
+        "Login",
+        "Active / Ready",
+        "Break",
+        "Call-On",
+        "Call-Off",
+        "Unaccounted",
+        "Login Duration",
+    ]
+
+    for column in duration_columns:
+
+        if column in df.columns:
+
+            styler = styler.set_properties(
+                subset=[column],
+                **{
+                    "font-weight": "600"
+                }
+            )
+
+    percentage_columns = [
+        "Ready %",
+        "Break %",
+        "Call-On % of Ready",
+        "Call-On % of Login",
+    ]
+
+    for column in percentage_columns:
+
+        if column in df.columns:
+
+            styler = styler.background_gradient(
+                subset=[column],
+                cmap="RdYlGn"
+            )
+
+    return styler
 
 
 # ============================================================
@@ -354,15 +515,9 @@ def normalise_agent_names(df):
 
 def process_acd_data(df):
 
-    df = df.copy()
-
     df = clean_text_columns(
         df
     )
-
-    # --------------------------------------------------------
-    # Call ID
-    # --------------------------------------------------------
 
     df["Call ID"] = (
         df["Call ID"]
@@ -380,17 +535,9 @@ def process_acd_data(df):
         keep="first"
     )
 
-    # --------------------------------------------------------
-    # Agent
-    # --------------------------------------------------------
-
     df = normalise_agent_names(
         df
     )
-
-    # --------------------------------------------------------
-    # Call time
-    # --------------------------------------------------------
 
     df["Parsed Call Time"] = (
         pd.to_datetime(
@@ -412,10 +559,6 @@ def process_acd_data(df):
         .fillna("")
     )
 
-    # --------------------------------------------------------
-    # Duration calculations
-    # --------------------------------------------------------
-
     df["Talk Seconds"] = (
         df["User Talk Time"]
         .apply(duration_to_seconds)
@@ -435,10 +578,6 @@ def process_acd_data(df):
         df["Total Wait Time"]
         .apply(duration_to_seconds)
     )
-
-    # --------------------------------------------------------
-    # AHT
-    # --------------------------------------------------------
 
     df["AHT Seconds"] = (
         df["Talk Seconds"]
@@ -503,9 +642,7 @@ def load_acd_history():
             columns=ACD_GOOGLE_COLUMNS
         )
 
-    df = pd.DataFrame(
-        records
-    )
+    df = pd.DataFrame(records)
 
     for column in ACD_GOOGLE_COLUMNS:
 
@@ -587,7 +724,7 @@ def load_acd_history():
 
 
 # ============================================================
-# PRODUCTIVITY HELPERS
+# PRODUCTIVITY PARSING
 # ============================================================
 
 def parse_productivity_datetime(
@@ -605,15 +742,9 @@ def normalise_productivity_data(
     df
 ):
 
-    df = df.copy()
-
     df = clean_text_columns(
         df
     )
-
-    # --------------------------------------------------------
-    # Parse all relevant timestamps
-    # --------------------------------------------------------
 
     datetime_columns = [
         "Login Time",
@@ -636,10 +767,6 @@ def normalise_productivity_data(
                 df[column]
             )
 
-    # --------------------------------------------------------
-    # Agent name
-    # --------------------------------------------------------
-
     df["Username"] = (
         df["Username"]
         .fillna("")
@@ -652,80 +779,52 @@ def normalise_productivity_data(
         "Username"
     ] = "Unknown Agent"
 
-    # --------------------------------------------------------
-    # Daily date
-    #
-    # The session's LOGIN DATE defines the agent-day.
-    # --------------------------------------------------------
-
     df["Productivity Date"] = (
-        df["Parsed Login Time"]
+        df[
+            "Parsed Login Time"
+        ]
         .dt.date
     )
-
-    # --------------------------------------------------------
-    # Login duration
-    #
-    # Use the report's Total Login Duration.
-    # --------------------------------------------------------
 
     df["Login Seconds"] = (
         df["Total Login Duration"]
         .apply(duration_to_seconds)
     )
 
-    # --------------------------------------------------------
-    # Ready / Active duration
-    # --------------------------------------------------------
-
     df["Ready Seconds"] = (
         df["Ready Duration"]
         .apply(duration_to_seconds)
     )
-
-    # --------------------------------------------------------
-    # Break duration
-    # --------------------------------------------------------
 
     df["Break Seconds"] = (
         df["Break Duration"]
         .apply(duration_to_seconds)
     )
 
-    # --------------------------------------------------------
-    # Auto Call-On / Off
-    # --------------------------------------------------------
-
     df["Call On Seconds"] = (
-        df["Auto Call-On Duration"]
+        df[
+            "Auto Call-On Duration"
+        ]
         .apply(duration_to_seconds)
     )
 
     df["Call Off Seconds"] = (
-        df["Auto Call-Off Duration"]
+        df[
+            "Auto Call-Off Duration"
+        ]
         .apply(duration_to_seconds)
     )
 
     return df
 
 
-# ============================================================
-# PROCESS PRODUCTIVITY CSV
-# ============================================================
-
 def process_productivity_upload(
     df
 ):
 
-    df = df.copy()
-
     df = clean_text_columns(
         df
     )
-
-    # --------------------------------------------------------
-    # Make sure all columns exist
-    # --------------------------------------------------------
 
     for column in PRODUCTIVITY_COLUMNS:
 
@@ -746,11 +845,12 @@ def process_productivity_upload(
         )
     )
 
-    # Remove temporary parsed/calculation columns
     temporary_columns = [
         column
         for column in df.columns
-        if column.startswith("Parsed ")
+        if column.startswith(
+            "Parsed "
+        )
         or column in [
             "Productivity Date",
             "Login Seconds",
@@ -777,10 +877,7 @@ def process_productivity_upload(
 
 
 # ============================================================
-# PRODUCTIVITY UNIQUE ROW KEY
-#
-# We use the available history IDs to protect the sheet
-# against uploading the same daily CSV multiple times.
+# PRODUCTIVITY DUPLICATE KEY
 # ============================================================
 
 def productivity_row_key(
@@ -808,7 +905,6 @@ def productivity_row_key(
         )
     ).strip()
 
-    # Best case: session + ready history + auto-call history
     if (
         session_id
         and ready_id
@@ -821,8 +917,6 @@ def productivity_row_key(
             f"{auto_id}"
         )
 
-    # If one history ID is blank, fall back to the entire
-    # source row so legitimate records aren't discarded.
     values = [
         str(
             row.get(
@@ -833,7 +927,10 @@ def productivity_row_key(
         for column in PRODUCTIVITY_COLUMNS
     ]
 
-    return "ROW|" + "|".join(values)
+    return (
+        "ROW|"
+        + "|".join(values)
+    )
 
 
 # ============================================================
@@ -843,9 +940,13 @@ def productivity_row_key(
 @st.cache_data(ttl=60)
 def load_productivity_history():
 
-    worksheet = get_productivity_worksheet()
+    worksheet = (
+        get_productivity_worksheet()
+    )
 
-    records = worksheet.get_all_records()
+    records = (
+        worksheet.get_all_records()
+    )
 
     if not records:
 
@@ -866,32 +967,9 @@ def load_productivity_history():
         PRODUCTIVITY_GOOGLE_COLUMNS
     ]
 
-    df = clean_text_columns(
+    return clean_text_columns(
         df
     )
-
-    return df
-
-
-# ============================================================
-# BUILD PRODUCTIVITY DATASET
-# ============================================================
-
-def prepare_productivity_dataframe(
-    df
-):
-
-    if df.empty:
-
-        return df.copy()
-
-    df = df.copy()
-
-    df = normalise_productivity_data(
-        df
-    )
-
-    return df
 
 
 # ============================================================
@@ -908,12 +986,15 @@ def build_session_summary(
 
     records = []
 
-    grouped = df.groupby(
-        [
-            "Username",
-            "Session ID"
-        ],
-        dropna=False
+    grouped = (
+        df
+        .groupby(
+            [
+                "Username",
+                "Session ID"
+            ],
+            dropna=False
+        )
     )
 
     for (
@@ -921,10 +1002,8 @@ def build_session_summary(
         group
     ) in grouped:
 
-        group = group.copy()
-
         # ----------------------------------------------------
-        # Login / logout
+        # LOGIN / LOGOUT
         # ----------------------------------------------------
 
         login_times = (
@@ -943,7 +1022,9 @@ def build_session_summary(
 
         if not login_times.empty:
 
-            login_time = login_times.min()
+            login_time = (
+                login_times.min()
+            )
 
         else:
 
@@ -951,7 +1032,9 @@ def build_session_summary(
 
         if not logout_times.empty:
 
-            logout_time = logout_times.max()
+            logout_time = (
+                logout_times.max()
+            )
 
         else:
 
@@ -966,30 +1049,39 @@ def build_session_summary(
             and pd.notna(logout_time)
         ):
 
-            calculated_login_seconds = (
+            login_seconds = (
                 logout_time
                 - login_time
             ).total_seconds()
 
         else:
 
-            calculated_login_seconds = (
+            login_seconds = (
                 group[
                     "Total Login Duration"
                 ]
-                .apply(duration_to_seconds)
+                .apply(
+                    duration_to_seconds
+                )
                 .max()
             )
 
+        login_seconds = max(
+            0,
+            login_seconds
+        )
+
         # ----------------------------------------------------
-        # Ready histories are unique events
+        # READY
+        #
+        # One Ready History ID = one ready event
         # ----------------------------------------------------
 
         ready_rows = (
             group[
                 [
                     "Ready History ID",
-                    "Ready Duration"
+                    "Ready Duration",
                 ]
             ]
             .drop_duplicates(
@@ -1010,10 +1102,9 @@ def build_session_summary(
         )
 
         # ----------------------------------------------------
-        # Break histories
+        # BREAK
         #
-        # Break duration is attached to the ready history.
-        # Therefore take one value per ready history.
+        # One Break value per Ready History ID
         # ----------------------------------------------------
 
         break_rows = (
@@ -1021,7 +1112,6 @@ def build_session_summary(
                 [
                     "Ready History ID",
                     "Break Duration",
-                    "Break Reason"
                 ]
             ]
             .drop_duplicates(
@@ -1042,7 +1132,9 @@ def build_session_summary(
         )
 
         # ----------------------------------------------------
-        # Auto call histories are also unique
+        # AUTO CALL
+        #
+        # One value per Auto Call History ID
         # ----------------------------------------------------
 
         call_rows = (
@@ -1050,7 +1142,7 @@ def build_session_summary(
                 [
                     "Auto Call On/Off History ID",
                     "Auto Call-On Duration",
-                    "Auto Call-Off Duration"
+                    "Auto Call-Off Duration",
                 ]
             ]
             .drop_duplicates(
@@ -1081,31 +1173,43 @@ def build_session_summary(
         )
 
         # ----------------------------------------------------
-        # Unaccounted
-        #
-        # Call-On / Call-Off are states within the agent's
-        # ready period, therefore we DO NOT subtract them
-        # again from login time.
+        # RECONCILIATION
         #
         # Login = Ready + Break + Unaccounted
+        #
+        # Call-On/Call-Off are states WITHIN Ready.
+        # They are therefore NOT subtracted separately.
         # ----------------------------------------------------
 
         unaccounted_seconds = max(
-            calculated_login_seconds
+            login_seconds
             - ready_seconds
             - break_seconds,
             0
         )
 
-        if pd.notna(login_time):
+        productivity_date = (
+            login_time.date()
+            if pd.notna(login_time)
+            else None
+        )
 
-            productivity_date = (
-                login_time.date()
+        campaign_values = (
+            group[
+                "Campaign Name"
+            ]
+            .replace(
+                "",
+                np.nan
             )
+            .dropna()
+        )
 
-        else:
-
-            productivity_date = None
+        campaign_name = (
+            campaign_values.iloc[0]
+            if not campaign_values.empty
+            else ""
+        )
 
         records.append(
             {
@@ -1114,51 +1218,52 @@ def build_session_summary(
                 "Session ID": session_id,
                 "Login": login_time,
                 "Logout": logout_time,
-                "Login Seconds": calculated_login_seconds,
+                "Login Seconds": login_seconds,
                 "Ready Seconds": ready_seconds,
                 "Break Seconds": break_seconds,
                 "Call On Seconds": call_on_seconds,
                 "Call Off Seconds": call_off_seconds,
                 "Unaccounted Seconds": unaccounted_seconds,
-                "Campaign Name": (
-                    group[
-                        "Campaign Name"
-                    ]
-                    .replace("", np.nan)
-                    .dropna()
-                    .iloc[0]
-                    if not group[
-                        "Campaign Name"
-                    ].replace("", np.nan).dropna().empty
-                    else ""
-                ),
+                "Campaign Name": campaign_name,
             }
         )
 
-    result = pd.DataFrame(
+    return pd.DataFrame(
         records
     )
-
-    return result
 
 
 # ============================================================
 # AGENT-DAY SUMMARY
+#
+# STEP 1:
+# Calculate the actual day for every agent.
+#
+# STEP 2:
+# If an agent had multiple sessions in one day, those sessions
+# form the complete day.
+#
+# STEP 3:
+# This table contains the ACTUAL agent-day values.
+#
+# Later, dashboard totals/KPIs are AVERAGED across these days.
 # ============================================================
 
-def build_agent_day_summary(
+def build_agent_day_numeric(
     df
 ):
 
-    session_df = build_session_summary(
-        df
+    session_df = (
+        build_session_summary(
+            df
+        )
     )
 
     if session_df.empty:
 
         return pd.DataFrame()
 
-    grouped = (
+    daily = (
         session_df
         .groupby(
             [
@@ -1200,85 +1305,112 @@ def build_agent_day_summary(
         .reset_index()
     )
 
-    # --------------------------------------------------------
-    # Percentages
-    # --------------------------------------------------------
-
-    grouped["Ready %"] = np.where(
-        grouped["Login_Seconds"] > 0,
+    daily["Ready %"] = np.where(
+        daily["Login_Seconds"] > 0,
         (
-            grouped["Ready_Seconds"]
-            / grouped["Login_Seconds"]
+            daily["Ready_Seconds"]
+            / daily["Login_Seconds"]
             * 100
         ),
         0
     )
 
-    grouped["Break %"] = np.where(
-        grouped["Login_Seconds"] > 0,
+    daily["Break %"] = np.where(
+        daily["Login_Seconds"] > 0,
         (
-            grouped["Break_Seconds"]
-            / grouped["Login_Seconds"]
+            daily["Break_Seconds"]
+            / daily["Login_Seconds"]
             * 100
         ),
         0
     )
 
-    grouped["Call-On % of Ready"] = np.where(
-        grouped["Ready_Seconds"] > 0,
+    daily["Call-On % of Ready"] = np.where(
+        daily["Ready_Seconds"] > 0,
         (
-            grouped["Call_On_Seconds"]
-            / grouped["Ready_Seconds"]
+            daily["Call_On_Seconds"]
+            / daily["Ready_Seconds"]
             * 100
         ),
         0
     )
 
-    grouped["Call-On % of Login"] = np.where(
-        grouped["Login_Seconds"] > 0,
+    daily["Call-On % of Login"] = np.where(
+        daily["Login_Seconds"] > 0,
         (
-            grouped["Call_On_Seconds"]
-            / grouped["Login_Seconds"]
+            daily["Call_On_Seconds"]
+            / daily["Login_Seconds"]
             * 100
         ),
         0
     )
 
-    # --------------------------------------------------------
-    # Display durations
-    # --------------------------------------------------------
+    return daily
 
-    grouped["Login"] = (
-        grouped["Login_Seconds"]
-        .apply(seconds_to_hhmmss)
+
+def build_agent_day_display(
+    numeric_df
+):
+
+    if numeric_df.empty:
+
+        return pd.DataFrame()
+
+    df = numeric_df.copy()
+
+    df["Date"] = (
+        pd.to_datetime(
+            df["Date"],
+            errors="coerce"
+        )
+        .dt.strftime(
+            "%d-%m-%Y"
+        )
     )
 
-    grouped["Active / Ready"] = (
-        grouped["Ready_Seconds"]
-        .apply(seconds_to_hhmmss)
+    df["Login"] = (
+        df["Login_Seconds"]
+        .apply(
+            seconds_to_hhmmss
+        )
     )
 
-    grouped["Break"] = (
-        grouped["Break_Seconds"]
-        .apply(seconds_to_hhmmss)
+    df["Active / Ready"] = (
+        df["Ready_Seconds"]
+        .apply(
+            seconds_to_hhmmss
+        )
     )
 
-    grouped["Call-On"] = (
-        grouped["Call_On_Seconds"]
-        .apply(seconds_to_hhmmss)
+    df["Break"] = (
+        df["Break_Seconds"]
+        .apply(
+            seconds_to_hhmmss
+        )
     )
 
-    grouped["Call-Off"] = (
-        grouped["Call_Off_Seconds"]
-        .apply(seconds_to_hhmmss)
+    df["Call-On"] = (
+        df["Call_On_Seconds"]
+        .apply(
+            seconds_to_hhmmss
+        )
     )
 
-    grouped["Unaccounted"] = (
-        grouped["Unaccounted_Seconds"]
-        .apply(seconds_to_hhmmss)
+    df["Call-Off"] = (
+        df["Call_Off_Seconds"]
+        .apply(
+            seconds_to_hhmmss
+        )
     )
 
-    result = grouped[
+    df["Unaccounted"] = (
+        df["Unaccounted_Seconds"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    result = df[
         [
             "Date",
             "Agent",
@@ -1296,26 +1428,219 @@ def build_agent_day_summary(
         ]
     ].copy()
 
-    result["Date"] = pd.to_datetime(
-        result["Date"],
-        errors="coerce"
+    result["Ready %"] = (
+        result["Ready %"]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
     )
 
-    result = result.sort_values(
-        [
-            "Date",
-            "Agent"
+    result["Break %"] = (
+        result["Break %"]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
+    )
+
+    result["Call-On % of Ready"] = (
+        result[
+            "Call-On % of Ready"
         ]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
     )
 
-    result["Date"] = (
-        result["Date"]
+    result["Call-On % of Login"] = (
+        result[
+            "Call-On % of Login"
+        ]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
+    )
+
+    return result
+
+
+# ============================================================
+# DAILY AVERAGE SUMMARY
+#
+# One row per DATE.
+# Every time metric = AVERAGE ACROSS AGENTS on that date.
+# ============================================================
+
+def build_daily_average_summary(
+    numeric_df
+):
+
+    if numeric_df.empty:
+
+        return pd.DataFrame()
+
+    daily = (
+        numeric_df
+        .groupby(
+            "Date",
+            dropna=False
+        )
+        .agg(
+            Agents=(
+                "Agent",
+                "nunique"
+            ),
+            Avg_Login=(
+                "Login_Seconds",
+                "mean"
+            ),
+            Avg_Ready=(
+                "Ready_Seconds",
+                "mean"
+            ),
+            Avg_Break=(
+                "Break_Seconds",
+                "mean"
+            ),
+            Avg_Call_On=(
+                "Call_On_Seconds",
+                "mean"
+            ),
+            Avg_Call_Off=(
+                "Call_Off_Seconds",
+                "mean"
+            ),
+            Avg_Unaccounted=(
+                "Unaccounted_Seconds",
+                "mean"
+            ),
+            Avg_Ready_Pct=(
+                "Ready %",
+                "mean"
+            ),
+            Avg_Break_Pct=(
+                "Break %",
+                "mean"
+            ),
+            Avg_Call_On_Ready_Pct=(
+                "Call-On % of Ready",
+                "mean"
+            ),
+            Avg_Call_On_Login_Pct=(
+                "Call-On % of Login",
+                "mean"
+            ),
+        )
+        .reset_index()
+    )
+
+    daily["Date"] = (
+        pd.to_datetime(
+            daily["Date"],
+            errors="coerce"
+        )
         .dt.strftime(
             "%d-%m-%Y"
         )
     )
 
-    return result
+    daily["Average Login"] = (
+        daily["Avg_Login"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    daily["Average Active / Ready"] = (
+        daily["Avg_Ready"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    daily["Average Break"] = (
+        daily["Avg_Break"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    daily["Average Call-On"] = (
+        daily["Avg_Call_On"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    daily["Average Call-Off"] = (
+        daily["Avg_Call_Off"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    daily["Average Unaccounted"] = (
+        daily["Avg_Unaccounted"]
+        .apply(
+            seconds_to_hhmmss
+        )
+    )
+
+    daily["Ready %"] = (
+        daily["Avg_Ready_Pct"]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
+    )
+
+    daily["Break %"] = (
+        daily["Avg_Break_Pct"]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
+    )
+
+    daily["Call-On % of Ready"] = (
+        daily[
+            "Avg_Call_On_Ready_Pct"
+        ]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
+    )
+
+    daily["Call-On % of Login"] = (
+        daily[
+            "Avg_Call_On_Login_Pct"
+        ]
+        .map(
+            lambda x:
+            f"{x:.1f}%"
+        )
+    )
+
+    return daily[
+        [
+            "Date",
+            "Agents",
+            "Average Login",
+            "Average Active / Ready",
+            "Average Break",
+            "Average Call-On",
+            "Average Call-Off",
+            "Average Unaccounted",
+            "Ready %",
+            "Break %",
+            "Call-On % of Ready",
+            "Call-On % of Login",
+        ]
+    ]
 
 
 # ============================================================
@@ -1333,13 +1658,14 @@ def build_break_summary(
     break_df = df.copy()
 
     break_df["Break Seconds"] = (
-        break_df["Break Duration"]
+        break_df[
+            "Break Duration"
+        ]
         .apply(
             duration_to_seconds
         )
     )
 
-    # One break value per Ready History ID
     break_df = (
         break_df[
             [
@@ -1358,14 +1684,18 @@ def build_break_summary(
     )
 
     break_df = break_df[
-        break_df["Break Seconds"] > 0
+        break_df[
+            "Break Seconds"
+        ] > 0
     ].copy()
 
     if break_df.empty:
 
         return pd.DataFrame()
 
-    break_df["Break Reason Display"] = (
+    break_df[
+        "Break Reason"
+    ] = (
         break_df[
             "Break Reason"
         ]
@@ -1374,12 +1704,18 @@ def build_break_summary(
         )
     )
 
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Break summary now uses AVERAGE break duration per
+    # break-reason/agent combination.
+    # --------------------------------------------------------
+
     summary = (
         break_df
         .groupby(
             [
                 "Username",
-                "Break Reason Display"
+                "Break Reason"
             ],
             dropna=False
         )
@@ -1388,17 +1724,17 @@ def build_break_summary(
                 "Ready History ID",
                 "nunique"
             ),
-            Total_Break_Seconds=(
+            Average_Break_Seconds=(
                 "Break Seconds",
-                "sum"
+                "mean"
             )
         )
         .reset_index()
     )
 
-    summary["Total Break"] = (
+    summary["Average Break"] = (
         summary[
-            "Total_Break_Seconds"
+            "Average_Break_Seconds"
         ]
         .apply(
             seconds_to_hhmmss
@@ -1407,8 +1743,7 @@ def build_break_summary(
 
     summary = summary.rename(
         columns={
-            "Username": "Agent",
-            "Break Reason Display": "Break Reason",
+            "Username": "Agent"
         }
     )
 
@@ -1417,12 +1752,12 @@ def build_break_summary(
             "Agent",
             "Break Reason",
             "Breaks",
-            "Total Break",
+            "Average Break",
         ]
     ].sort_values(
         [
             "Agent",
-            "Total Break"
+            "Breaks"
         ],
         ascending=[
             True,
@@ -1432,7 +1767,7 @@ def build_break_summary(
 
 
 # ============================================================
-# BUILD TIMELINE
+# FULL AGENT TIMELINE
 # ============================================================
 
 def build_agent_timeline(
@@ -1482,13 +1817,13 @@ def build_agent_timeline(
 
         if not login_times.empty:
 
-            login_time = login_times.min()
+            value = login_times.min()
 
             timeline_rows.append(
                 {
                     "Session ID": session_id,
-                    "Start": login_time,
-                    "End": login_time,
+                    "Start": value,
+                    "End": value,
                     "Activity": "LOGIN",
                     "Reason": "",
                 }
@@ -1496,20 +1831,20 @@ def build_agent_timeline(
 
         if not logout_times.empty:
 
-            logout_time = logout_times.max()
+            value = logout_times.max()
 
             timeline_rows.append(
                 {
                     "Session ID": session_id,
-                    "Start": logout_time,
-                    "End": logout_time,
+                    "Start": value,
+                    "End": value,
                     "Activity": "LOGOUT",
                     "Reason": "",
                 }
             )
 
     # --------------------------------------------------------
-    # READY / ACTIVE
+    # READY
     # --------------------------------------------------------
 
     ready_df = (
@@ -1528,7 +1863,9 @@ def build_agent_timeline(
         )
     )
 
-    for _, row in ready_df.iterrows():
+    for _, row in (
+        ready_df.iterrows()
+    ):
 
         start = row[
             "Parsed Ready Start Time"
@@ -1538,26 +1875,26 @@ def build_agent_timeline(
             "Parsed Ready End Time"
         ]
 
-        if pd.notna(start) and pd.notna(end):
+        if (
+            pd.notna(start)
+            and pd.notna(end)
+            and end >= start
+        ):
 
-            if end >= start:
-
-                timeline_rows.append(
-                    {
-                        "Session ID": row[
-                            "Session ID"
-                        ],
-                        "Start": start,
-                        "End": end,
-                        "Activity": "READY / ACTIVE",
-                        "Reason": "",
-                    }
-                )
+            timeline_rows.append(
+                {
+                    "Session ID": row[
+                        "Session ID"
+                    ],
+                    "Start": start,
+                    "End": end,
+                    "Activity": "READY / ACTIVE",
+                    "Reason": "",
+                }
+            )
 
     # --------------------------------------------------------
-    # BREAKS
-    #
-    # Break starts at Ready End Time and ends at Break End Time.
+    # BREAK
     # --------------------------------------------------------
 
     break_df = (
@@ -1578,7 +1915,9 @@ def build_agent_timeline(
         )
     )
 
-    for _, row in break_df.iterrows():
+    for _, row in (
+        break_df.iterrows()
+    ):
 
         start = row[
             "Parsed Ready End Time"
@@ -1588,7 +1927,7 @@ def build_agent_timeline(
             "Parsed Break End Time"
         ]
 
-        break_seconds = duration_to_seconds(
+        seconds = duration_to_seconds(
             row[
                 "Break Duration"
             ]
@@ -1597,14 +1936,9 @@ def build_agent_timeline(
         if (
             pd.notna(start)
             and pd.notna(end)
-            and break_seconds > 0
+            and end >= start
+            and seconds > 0
         ):
-
-            reason = filter_display_value(
-                row[
-                    "Break Reason"
-                ]
-            )
 
             timeline_rows.append(
                 {
@@ -1614,12 +1948,16 @@ def build_agent_timeline(
                     "Start": start,
                     "End": end,
                     "Activity": "BREAK",
-                    "Reason": reason,
+                    "Reason": filter_display_value(
+                        row[
+                            "Break Reason"
+                        ]
+                    ),
                 }
             )
 
     # --------------------------------------------------------
-    # AUTO CALL-ON / CALL-OFF
+    # AUTO CALL ON / OFF
     # --------------------------------------------------------
 
     call_df = (
@@ -1639,67 +1977,57 @@ def build_agent_timeline(
         )
     )
 
-    for _, row in call_df.iterrows():
+    for _, row in (
+        call_df.iterrows()
+    ):
 
         session_id = row[
             "Session ID"
         ]
 
-        call_on_start = row[
+        on_start = row[
             "Parsed Auto Call-On Start Time"
         ]
 
-        call_on_end = row[
+        on_end = row[
             "Parsed Auto Call-On End Time"
         ]
 
-        call_off_end = row[
+        off_end = row[
             "Parsed Auto Call-Off End Time"
         ]
 
-        # Call-On interval
         if (
-            pd.notna(call_on_start)
-            and pd.notna(call_on_end)
-            and call_on_end >= call_on_start
+            pd.notna(on_start)
+            and pd.notna(on_end)
+            and on_end > on_start
         ):
 
-            if (
-                call_on_end
-                > call_on_start
-            ):
+            timeline_rows.append(
+                {
+                    "Session ID": session_id,
+                    "Start": on_start,
+                    "End": on_end,
+                    "Activity": "CALL-ON",
+                    "Reason": "",
+                }
+            )
 
-                timeline_rows.append(
-                    {
-                        "Session ID": session_id,
-                        "Start": call_on_start,
-                        "End": call_on_end,
-                        "Activity": "CALL-ON",
-                        "Reason": "",
-                    }
-                )
-
-        # Call-Off interval
         if (
-            pd.notna(call_on_end)
-            and pd.notna(call_off_end)
-            and call_off_end >= call_on_end
+            pd.notna(on_end)
+            and pd.notna(off_end)
+            and off_end > on_end
         ):
 
-            if (
-                call_off_end
-                > call_on_end
-            ):
-
-                timeline_rows.append(
-                    {
-                        "Session ID": session_id,
-                        "Start": call_on_end,
-                        "End": call_off_end,
-                        "Activity": "CALL-OFF",
-                        "Reason": "",
-                    }
-                )
+            timeline_rows.append(
+                {
+                    "Session ID": session_id,
+                    "Start": on_end,
+                    "End": off_end,
+                    "Activity": "CALL-OFF",
+                    "Reason": "",
+                }
+            )
 
     if not timeline_rows:
 
@@ -1716,23 +2044,25 @@ def build_agent_timeline(
         ]
     )
 
-    # --------------------------------------------------------
-    # Duration
-    # --------------------------------------------------------
-
     timeline["Duration Seconds"] = (
         timeline["End"]
         - timeline["Start"]
     ).dt.total_seconds()
 
     timeline["Duration Seconds"] = (
-        timeline["Duration Seconds"]
+        timeline[
+            "Duration Seconds"
+        ]
         .fillna(0)
-        .clip(lower=0)
+        .clip(
+            lower=0
+        )
     )
 
     timeline["Duration"] = (
-        timeline["Duration Seconds"]
+        timeline[
+            "Duration Seconds"
+        ]
         .apply(
             seconds_to_hhmmss
         )
@@ -1785,17 +2115,13 @@ acd_tab, productivity_tab = st.tabs(
 
 
 # ################################################################
-# ################################################################
-#
 # TAB 1 — ACD PERFORMANCE
-#
-# ################################################################
 # ################################################################
 
 with acd_tab:
 
     # ============================================================
-    # ACD UPLOAD
+    # UPLOAD
     # ============================================================
 
     with st.expander(
@@ -1809,7 +2135,7 @@ with acd_tab:
             key="acd_upload",
             help=(
                 "Upload the fixed-format ACD "
-                "call-detail CSV report."
+                "call-detail CSV."
             )
         )
 
@@ -1824,7 +2150,7 @@ with acd_tab:
                 try:
 
                     with st.spinner(
-                        "Validating and importing ACD report..."
+                        "Importing ACD report..."
                     ):
 
                         uploaded_df = pd.read_csv(
@@ -1849,7 +2175,7 @@ with acd_tab:
 
                             st.error(
                                 "The uploaded CSV is missing "
-                                "required columns:"
+                                "required columns."
                             )
 
                             for column in missing_columns:
@@ -1889,13 +2215,16 @@ with acd_tab:
                                 if str(x).strip()
                             }
 
-                            new_df = processed_df[
-                                ~processed_df[
-                                    "Call ID"
-                                ].isin(
-                                    existing_call_ids
-                                )
-                            ].copy()
+                            new_df = (
+                                processed_df[
+                                    ~processed_df[
+                                        "Call ID"
+                                    ].isin(
+                                        existing_call_ids
+                                    )
+                                ]
+                                .copy()
+                            )
 
                             duplicate_count = (
                                 len(processed_df)
@@ -1904,16 +2233,12 @@ with acd_tab:
 
                             if not new_df.empty:
 
-                                rows_to_append = (
+                                worksheet.append_rows(
                                     new_df
                                     .fillna("")
                                     .astype(str)
                                     .values
-                                    .tolist()
-                                )
-
-                                worksheet.append_rows(
-                                    rows_to_append,
+                                    .tolist(),
                                     value_input_option=(
                                         "USER_ENTERED"
                                     )
@@ -1921,16 +2246,15 @@ with acd_tab:
 
                                 st.success(
                                     f"ACD upload complete — "
-                                    f"**{len(new_df):,} new calls** "
-                                    f"added."
+                                    f"**{len(new_df):,} new calls** added."
                                 )
 
-                                if duplicate_count > 0:
+                                if duplicate_count:
 
                                     st.info(
-                                        f"**{duplicate_count:,} "
-                                        f"existing/duplicate Call IDs** "
-                                        f"were skipped."
+                                        f"{duplicate_count:,} "
+                                        "duplicate/existing Call IDs "
+                                        "were skipped."
                                     )
 
                                 load_acd_history.clear()
@@ -1938,8 +2262,7 @@ with acd_tab:
                             else:
 
                                 st.info(
-                                    "No new ACD calls were added. "
-                                    "All uploaded Call IDs already exist."
+                                    "No new ACD calls were added."
                                 )
 
                 except Exception as e:
@@ -1996,7 +2319,7 @@ with acd_tab:
         )
 
         # ========================================================
-        # ACD TOP FILTERS
+        # FILTERS
         # ========================================================
 
         st.subheader(
@@ -2006,7 +2329,9 @@ with acd_tab:
         f1, f2, f3, f4 = st.columns(4)
 
         valid_dates = (
-            acd_df["Call Date"]
+            acd_df[
+                "Call Date"
+            ]
             .dropna()
         )
 
@@ -2031,11 +2356,7 @@ with acd_tab:
                 min_value=min_date,
                 max_value=max_date,
                 format="DD-MM-YYYY",
-                key="acd_date_filter",
-                help=(
-                    "Filter ALL ACD dashboard values "
-                    "by Call Date."
-                )
+                key="acd_date_filter"
             )
 
         with f2:
@@ -2049,11 +2370,7 @@ with acd_tab:
                     time(23, 59)
                 ),
                 format="HH:mm",
-                key="acd_time_filter",
-                help=(
-                    "Filter ALL ACD dashboard values "
-                    "by Call Time."
-                )
+                key="acd_time_filter"
             )
 
         queue_values = sorted(
@@ -2069,13 +2386,9 @@ with acd_tab:
 
             selected_queues = st.multiselect(
                 "📥 Queue Name",
-                options=queue_values,
+                queue_values,
                 default=queue_values,
-                key="acd_queue_filter",
-                help=(
-                    "'(Blank)' represents calls where "
-                    "Queue Name is blank."
-                )
+                key="acd_queue_filter"
             )
 
         disposition_values = sorted(
@@ -2091,13 +2404,9 @@ with acd_tab:
 
             selected_dispositions = st.multiselect(
                 "🏷️ User Disposition Code",
-                options=disposition_values,
+                disposition_values,
                 default=disposition_values,
-                key="acd_disposition_filter",
-                help=(
-                    "'(Blank)' represents calls where "
-                    "User Disposition Code is blank."
-                )
+                key="acd_disposition_filter"
             )
 
         # ========================================================
@@ -2107,32 +2416,28 @@ with acd_tab:
         if isinstance(
             selected_dates,
             tuple
-        ):
+        ) and len(selected_dates) >= 2:
 
-            if len(selected_dates) == 2:
+            filter_start_date = (
+                selected_dates[0]
+            )
 
-                filter_start_date = (
-                    selected_dates[0]
-                )
+            filter_end_date = (
+                selected_dates[1]
+            )
 
-                filter_end_date = (
-                    selected_dates[1]
-                )
+        elif isinstance(
+            selected_dates,
+            tuple
+        ) and len(selected_dates) == 1:
 
-            elif len(selected_dates) == 1:
+            filter_start_date = (
+                selected_dates[0]
+            )
 
-                filter_start_date = (
-                    selected_dates[0]
-                )
-
-                filter_end_date = (
-                    selected_dates[0]
-                )
-
-            else:
-
-                filter_start_date = min_date
-                filter_end_date = max_date
+            filter_end_date = (
+                selected_dates[0]
+            )
 
         else:
 
@@ -2140,29 +2445,40 @@ with acd_tab:
             filter_end_date = selected_dates
 
         # ========================================================
-        # APPLY ACD FILTERS
+        # APPLY FILTERS
         # ========================================================
 
         filtered_acd = acd_df.copy()
 
         filtered_acd = filtered_acd[
-            filtered_acd["Call Date"].notna()
+            filtered_acd[
+                "Call Date"
+            ].notna()
         ]
 
         filtered_acd = filtered_acd[
             (
-                filtered_acd["Call Date"]
+                filtered_acd[
+                    "Call Date"
+                ]
                 >= filter_start_date
             )
             &
             (
-                filtered_acd["Call Date"]
+                filtered_acd[
+                    "Call Date"
+                ]
                 <= filter_end_date
             )
         ]
 
-        start_time = selected_time_range[0]
-        end_time = selected_time_range[1]
+        start_time = (
+            selected_time_range[0]
+        )
+
+        end_time = (
+            selected_time_range[1]
+        )
 
         if start_time <= end_time:
 
@@ -2214,9 +2530,11 @@ with acd_tab:
                 )
             )
 
-            filtered_acd = filtered_acd[
-                queue_mask
-            ]
+            filtered_acd = (
+                filtered_acd[
+                    queue_mask
+                ]
+            )
 
         if selected_dispositions:
 
@@ -2232,21 +2550,15 @@ with acd_tab:
                 )
             )
 
-            filtered_acd = filtered_acd[
-                disposition_mask
-            ]
+            filtered_acd = (
+                filtered_acd[
+                    disposition_mask
+                ]
+            )
 
         # ========================================================
-        # ACD SUMMARY
+        # ACD KPIs
         # ========================================================
-
-        st.caption(
-            f"Showing **{filtered_acd['Call ID'].nunique():,} calls** "
-            f"from **{filter_start_date.strftime('%d-%m-%Y')}** "
-            f"to **{filter_end_date.strftime('%d-%m-%Y')}**, "
-            f"between **{start_time.strftime('%H:%M')}** "
-            f"and **{end_time.strftime('%H:%M')}**."
-        )
 
         total_calls = (
             filtered_acd[
@@ -2280,8 +2592,14 @@ with acd_tab:
             avg_asa = 0
             avg_acw = 0
 
+        st.caption(
+            f"Showing **{total_calls:,} calls** "
+            f"from **{filter_start_date.strftime('%d-%m-%Y')}** "
+            f"to **{filter_end_date.strftime('%d-%m-%Y')}**."
+        )
+
         # ========================================================
-        # KPI CARDS
+        # ACD KPI CARDS
         # ========================================================
 
         k1, k2, k3, k4 = st.columns(4)
@@ -2292,10 +2610,9 @@ with acd_tab:
                 "📞 Calls",
                 f"{total_calls:,}",
                 help=(
-                    "Total number of unique calls "
-                    "in the selected filters.\n\n"
-                    "Calls with no assigned agent are "
-                    "included as 'Call Dropped'."
+                    "Unique calls based on Call ID.\n\n"
+                    "Blank agents are included as "
+                    "'Call Dropped'."
                 )
             )
 
@@ -2307,7 +2624,7 @@ with acd_tab:
                     avg_aht
                 ),
                 help=(
-                    "Average Handling Time (AHT)\n\n"
+                    "Average Handling Time.\n\n"
                     "User Talk Time + "
                     "User Hold Duration + "
                     "ACW Duration."
@@ -2322,7 +2639,7 @@ with acd_tab:
                     avg_asa
                 ),
                 help=(
-                    "Average Speed of Answer (ASA)\n\n"
+                    "Average Speed of Answer.\n\n"
                     "Average of Total Wait Time."
                 )
             )
@@ -2335,18 +2652,12 @@ with acd_tab:
                     avg_acw
                 ),
                 help=(
-                    "Average After Call Work (ACW)\n\n"
+                    "Average After Call Work.\n\n"
                     "Average of ACW Duration."
                 )
             )
 
-        if filtered_acd.empty:
-
-            st.warning(
-                "No ACD calls match the selected filters."
-            )
-
-        else:
+        if not filtered_acd.empty:
 
             # ====================================================
             # AGENT PERFORMANCE
@@ -2383,6 +2694,11 @@ with acd_tab:
                     ),
                 )
                 .reset_index()
+                .rename(
+                    columns={
+                        "Username": "Agent"
+                    }
+                )
             )
 
             agent_summary[
@@ -2421,18 +2737,13 @@ with acd_tab:
             agent_summary = (
                 agent_summary[
                     [
-                        "Username",
+                        "Agent",
                         "Calls",
                         "Average AHT",
                         "Average ASA",
                         "Average ACW",
                     ]
                 ]
-                .rename(
-                    columns={
-                        "Username": "Agent"
-                    }
-                )
                 .sort_values(
                     "Calls",
                     ascending=False
@@ -2440,7 +2751,9 @@ with acd_tab:
             )
 
             st.dataframe(
-                agent_summary,
+                style_acd_table(
+                    agent_summary
+                ),
                 use_container_width=True,
                 hide_index=True
             )
@@ -2514,6 +2827,20 @@ with acd_tab:
                 )
             )
 
+            daily_summary[
+                "Call Date"
+            ] = (
+                pd.to_datetime(
+                    daily_summary[
+                        "Call Date"
+                    ],
+                    errors="coerce"
+                )
+                .dt.strftime(
+                    "%d-%m-%Y"
+                )
+            )
+
             daily_summary = (
                 daily_summary[
                     [
@@ -2526,21 +2853,10 @@ with acd_tab:
                 ]
             )
 
-            daily_summary[
-                "Call Date"
-            ] = (
-                pd.to_datetime(
-                    daily_summary[
-                        "Call Date"
-                    ]
-                )
-                .dt.strftime(
-                    "%d-%m-%Y"
-                )
-            )
-
             st.dataframe(
-                daily_summary,
+                style_acd_table(
+                    daily_summary
+                ),
                 use_container_width=True,
                 hide_index=True
             )
@@ -2555,17 +2871,17 @@ with acd_tab:
                 "🕐 Hourly Call Distribution"
             )
 
-            hourly_df = filtered_acd.copy()
+            hourly = filtered_acd.copy()
 
-            hourly_df["Hour"] = (
-                hourly_df[
+            hourly["Hour"] = (
+                hourly[
                     "Parsed Call Time"
                 ]
                 .dt.hour
             )
 
             hourly_summary = (
-                hourly_df
+                hourly
                 .groupby(
                     "Hour"
                 )
@@ -2633,24 +2949,28 @@ with acd_tab:
                 )
             )
 
-            hourly_summary = hourly_summary[
-                [
-                    "Time",
-                    "Calls",
-                    "Average AHT",
-                    "Average ASA",
-                    "Average ACW",
+            hourly_summary = (
+                hourly_summary[
+                    [
+                        "Time",
+                        "Calls",
+                        "Average AHT",
+                        "Average ASA",
+                        "Average ACW",
+                    ]
                 ]
-            ]
+            )
 
             st.dataframe(
-                hourly_summary,
+                style_acd_table(
+                    hourly_summary
+                ),
                 use_container_width=True,
                 hide_index=True
             )
 
             # ====================================================
-            # DETAILED CALL RECORDS
+            # DETAIL
             # ====================================================
 
             st.markdown("---")
@@ -2677,26 +2997,6 @@ with acd_tab:
                 )
             )
 
-            display_df[
-                "Call Time Only"
-            ] = (
-                display_df[
-                    "Call Time Only"
-                ]
-                .apply(
-                    lambda x:
-                    x.strftime(
-                        "%H:%M:%S"
-                    )
-                    if pd.notna(x)
-                    and hasattr(
-                        x,
-                        "strftime"
-                    )
-                    else ""
-                )
-            )
-
             detail_columns = [
                 "Call Date",
                 "Call Time Only",
@@ -2719,9 +3019,9 @@ with acd_tab:
             ]
 
             detail_columns = [
-                column
-                for column in detail_columns
-                if column in display_df.columns
+                c
+                for c in detail_columns
+                if c in display_df.columns
             ]
 
             detail_display = (
@@ -2743,7 +3043,7 @@ with acd_tab:
             )
 
             # ====================================================
-            # ACD EXPORT
+            # EXPORT
             # ====================================================
 
             st.markdown("---")
@@ -2770,26 +3070,6 @@ with acd_tab:
                 )
             )
 
-            download_df[
-                "Call Time Only"
-            ] = (
-                download_df[
-                    "Call Time Only"
-                ]
-                .apply(
-                    lambda x:
-                    x.strftime(
-                        "%H:%M:%S"
-                    )
-                    if pd.notna(x)
-                    and hasattr(
-                        x,
-                        "strftime"
-                    )
-                    else ""
-                )
-            )
-
             download_df = (
                 download_df
                 .drop(
@@ -2802,22 +3082,15 @@ with acd_tab:
                 )
             )
 
-            csv_data = (
-                download_df
-                .to_csv(
-                    index=False
-                )
-                .encode(
-                    "utf-8"
-                )
-            )
-
             st.download_button(
-                label=(
-                    "📥 Download Filtered "
-                    "Calls CSV"
+                "📥 Download Filtered Calls CSV",
+                data=(
+                    download_df
+                    .to_csv(
+                        index=False
+                    )
+                    .encode("utf-8")
                 ),
-                data=csv_data,
                 file_name=(
                     "ACD_Filtered_"
                     f"{filter_start_date.strftime('%d-%m-%Y')}_"
@@ -2828,22 +3101,15 @@ with acd_tab:
                 key="acd_download"
             )
 
-        st.markdown("---")
+        else:
 
-        st.caption(
-            f"Historical ACD records: "
-            f"{len(acd_df):,} | "
-            f"Filtered records: "
-            f"{len(filtered_acd):,}"
-        )
+            st.warning(
+                "No ACD calls match the selected filters."
+            )
 
 
 # ################################################################
-# ################################################################
-#
 # TAB 2 — AGENT PRODUCTIVITY
-#
-# ################################################################
 # ################################################################
 
 with productivity_tab:
@@ -2853,12 +3119,12 @@ with productivity_tab:
     )
 
     st.caption(
-        "Daily agent login, Active/Ready, breaks, Call-On, "
-        "Call-Off and full-day reconciliation."
+        "Average daily agent productivity based on Login, "
+        "Active/Ready, Break and Auto Call-On activity."
     )
 
     # ============================================================
-    # PRODUCTIVITY UPLOAD
+    # UPLOAD
     # ============================================================
 
     with st.expander(
@@ -2867,13 +3133,9 @@ with productivity_tab:
     ):
 
         productivity_file = st.file_uploader(
-            "Upload the Agent Productivity CSV",
+            "Upload Agent Productivity CSV",
             type=["csv"],
-            key="productivity_upload",
-            help=(
-                "Upload the daily agent session/history "
-                "CSV export."
-            )
+            key="productivity_upload"
         )
 
         if productivity_file is not None:
@@ -2887,19 +3149,17 @@ with productivity_tab:
                 try:
 
                     with st.spinner(
-                        "Validating and importing productivity report..."
+                        "Importing productivity report..."
                     ):
 
-                        productivity_upload_df = (
-                            pd.read_csv(
-                                productivity_file,
-                                dtype=str,
-                                keep_default_na=False
-                            )
+                        upload_df = pd.read_csv(
+                            productivity_file,
+                            dtype=str,
+                            keep_default_na=False
                         )
 
-                        productivity_upload_df.columns = (
-                            productivity_upload_df.columns
+                        upload_df.columns = (
+                            upload_df.columns
                             .astype(str)
                             .str.strip()
                         )
@@ -2907,14 +3167,14 @@ with productivity_tab:
                         missing_columns = [
                             column
                             for column in PRODUCTIVITY_COLUMNS
-                            if column not in productivity_upload_df.columns
+                            if column not in upload_df.columns
                         ]
 
                         if missing_columns:
 
                             st.error(
                                 "The productivity CSV is missing "
-                                "required columns:"
+                                "required columns."
                             )
 
                             for column in missing_columns:
@@ -2925,16 +3185,16 @@ with productivity_tab:
 
                         else:
 
-                            productivity_upload_df = (
-                                productivity_upload_df[
+                            upload_df = (
+                                upload_df[
                                     PRODUCTIVITY_COLUMNS
                                 ]
                                 .copy()
                             )
 
-                            processed_productivity = (
+                            processed = (
                                 process_productivity_upload(
-                                    productivity_upload_df
+                                    upload_df
                                 )
                             )
 
@@ -2942,37 +3202,26 @@ with productivity_tab:
                                 get_productivity_worksheet()
                             )
 
-                            # ------------------------------------------------
-                            # Read existing rows
-                            # ------------------------------------------------
-
                             existing_records = (
                                 worksheet.get_all_records()
                             )
 
                             existing_keys = set()
 
-                            if existing_records:
+                            for row in (
+                                existing_records
+                            ):
 
-                                for existing_row in (
-                                    existing_records
-                                ):
-
-                                    existing_keys.add(
-                                        productivity_row_key(
-                                            existing_row
-                                        )
+                                existing_keys.add(
+                                    productivity_row_key(
+                                        row
                                     )
-
-                            # ------------------------------------------------
-                            # Only append new rows
-                            # ------------------------------------------------
+                                )
 
                             new_rows = []
 
                             for _, row in (
-                                processed_productivity
-                                .iterrows()
+                                processed.iterrows()
                             ):
 
                                 row_dict = (
@@ -3001,9 +3250,9 @@ with productivity_tab:
                                     [
                                         [
                                             ""
-                                            if pd.isna(value)
-                                            else str(value)
-                                            for value in row
+                                            if pd.isna(v)
+                                            else str(v)
+                                            for v in row
                                         ]
                                         for row in new_rows
                                     ],
@@ -3012,23 +3261,21 @@ with productivity_tab:
                                     )
                                 )
 
-                                st.success(
-                                    "Productivity upload complete — "
-                                    f"**{len(new_rows):,} new records** "
-                                    "added."
-                                )
-
-                                duplicate_count = (
-                                    len(processed_productivity)
+                                skipped = (
+                                    len(processed)
                                     - len(new_rows)
                                 )
 
-                                if duplicate_count > 0:
+                                st.success(
+                                    f"Productivity upload complete — "
+                                    f"**{len(new_rows):,} new records** added."
+                                )
+
+                                if skipped:
 
                                     st.info(
-                                        f"**{duplicate_count:,} "
-                                        "existing/duplicate records** "
-                                        "were skipped."
+                                        f"{skipped:,} existing/duplicate "
+                                        "records were skipped."
                                     )
 
                                 load_productivity_history.clear()
@@ -3036,9 +3283,7 @@ with productivity_tab:
                             else:
 
                                 st.info(
-                                    "No new productivity records "
-                                    "were added. The uploaded report "
-                                    "already exists in the historical data."
+                                    "No new productivity records were added."
                                 )
 
                 except Exception as e:
@@ -3048,7 +3293,7 @@ with productivity_tab:
                     )
 
     # ============================================================
-    # LOAD PRODUCTIVITY HISTORY
+    # LOAD PRODUCTIVITY
     # ============================================================
 
     try:
@@ -3074,18 +3319,14 @@ with productivity_tab:
 
     else:
 
-        # ========================================================
-        # PREPARE PRODUCTIVITY DATA
-        # ========================================================
-
         productivity_df = (
-            prepare_productivity_dataframe(
+            normalise_productivity_data(
                 productivity_df
             )
         )
 
         # ========================================================
-        # PRODUCTIVITY FILTERS
+        # FILTERS
         # ========================================================
 
         st.markdown("---")
@@ -3096,21 +3337,21 @@ with productivity_tab:
 
         p1, p2, p3, p4 = st.columns(4)
 
-        valid_productivity_dates = (
+        valid_dates = (
             productivity_df[
                 "Productivity Date"
             ]
             .dropna()
         )
 
-        if not valid_productivity_dates.empty:
+        if not valid_dates.empty:
 
             productivity_min_date = (
-                valid_productivity_dates.min()
+                valid_dates.min()
             )
 
             productivity_max_date = (
-                valid_productivity_dates.max()
+                valid_dates.max()
             )
 
         else:
@@ -3129,14 +3370,10 @@ with productivity_tab:
                 min_value=productivity_min_date,
                 max_value=productivity_max_date,
                 format="DD-MM-YYYY",
-                key="productivity_date_filter",
-                help=(
-                    "Filter the complete productivity "
-                    "dashboard by agent login date."
-                )
+                key="productivity_date_filter"
             )
 
-        productivity_agents = sorted(
+        agents = sorted(
             [
                 str(x)
                 for x in productivity_df[
@@ -3150,20 +3387,14 @@ with productivity_tab:
 
         with p2:
 
-            selected_productivity_agents = (
-                st.multiselect(
-                    "👤 Agent",
-                    options=productivity_agents,
-                    default=productivity_agents,
-                    key="productivity_agent_filter",
-                    help=(
-                        "Select the agents to include "
-                        "in the productivity dashboard."
-                    )
-                )
+            selected_agents = st.multiselect(
+                "👤 Agent",
+                agents,
+                default=agents,
+                key="productivity_agent_filter"
             )
 
-        productivity_campaigns = sorted(
+        campaigns = sorted(
             {
                 filter_display_value(x)
                 for x in productivity_df[
@@ -3174,17 +3405,11 @@ with productivity_tab:
 
         with p3:
 
-            selected_productivity_campaigns = (
-                st.multiselect(
-                    "📣 Campaign",
-                    options=productivity_campaigns,
-                    default=productivity_campaigns,
-                    key="productivity_campaign_filter",
-                    help=(
-                        "Filter productivity results "
-                        "by Campaign Name."
-                    )
-                )
+            selected_campaigns = st.multiselect(
+                "📣 Campaign",
+                campaigns,
+                default=campaigns,
+                key="productivity_campaign_filter"
             )
 
         break_reasons = sorted(
@@ -3200,62 +3425,53 @@ with productivity_tab:
 
             selected_break_reasons = st.multiselect(
                 "☕ Break Reason",
-                options=break_reasons,
+                break_reasons,
                 default=break_reasons,
-                key="productivity_break_filter",
-                help=(
-                    "Filter records by Break Reason. "
-                    "'(Blank)' includes records without "
-                    "a break reason."
-                )
+                key="productivity_break_filter"
             )
 
         # ========================================================
-        # PRODUCTIVITY DATE RANGE
+        # DATE RANGE
         # ========================================================
 
         if isinstance(
             productivity_dates,
             tuple
-        ):
+        ) and len(productivity_dates) >= 2:
 
-            if len(productivity_dates) == 2:
+            productivity_start_date = (
+                productivity_dates[0]
+            )
 
-                productivity_start_date = (
-                    productivity_dates[0]
-                )
+            productivity_end_date = (
+                productivity_dates[1]
+            )
 
-                productivity_end_date = (
-                    productivity_dates[1]
-                )
+        elif isinstance(
+            productivity_dates,
+            tuple
+        ) and len(productivity_dates) == 1:
 
-            elif len(productivity_dates) == 1:
+            productivity_start_date = (
+                productivity_dates[0]
+            )
 
-                productivity_start_date = (
-                    productivity_dates[0]
-                )
-
-                productivity_end_date = (
-                    productivity_dates[0]
-                )
-
-            else:
-
-                productivity_start_date = (
-                    productivity_min_date
-                )
-
-                productivity_end_date = (
-                    productivity_max_date
-                )
+            productivity_end_date = (
+                productivity_dates[0]
+            )
 
         else:
 
-            productivity_start_date = productivity_dates
-            productivity_end_date = productivity_dates
+            productivity_start_date = (
+                productivity_dates
+            )
+
+            productivity_end_date = (
+                productivity_dates
+            )
 
         # ========================================================
-        # APPLY PRODUCTIVITY FILTERS
+        # APPLY FILTERS
         # ========================================================
 
         filtered_productivity = (
@@ -3288,19 +3504,19 @@ with productivity_tab:
             ]
         )
 
-        if selected_productivity_agents:
+        if selected_agents:
 
             filtered_productivity = (
                 filtered_productivity[
                     filtered_productivity[
                         "Username"
                     ].isin(
-                        selected_productivity_agents
+                        selected_agents
                     )
                 ]
             )
 
-        if selected_productivity_campaigns:
+        if selected_campaigns:
 
             campaign_mask = (
                 filtered_productivity[
@@ -3310,7 +3526,7 @@ with productivity_tab:
                     filter_display_value
                 )
                 .isin(
-                    selected_productivity_campaigns
+                    selected_campaigns
                 )
             )
 
@@ -3341,31 +3557,16 @@ with productivity_tab:
             )
 
         # ========================================================
-        # FILTER SUMMARY
+        # BUILD ACTUAL AGENT-DAY DATA
         # ========================================================
 
-        st.caption(
-            f"Showing productivity data from "
-            f"**{productivity_start_date.strftime('%d-%m-%Y')}** "
-            f"to "
-            f"**{productivity_end_date.strftime('%d-%m-%Y')}**."
-        )
-
-        # ========================================================
-        # BUILD AGENT-DAY SUMMARY
-        # ========================================================
-
-        agent_day_summary = (
-            build_agent_day_summary(
+        agent_day_numeric = (
+            build_agent_day_numeric(
                 filtered_productivity
             )
         )
 
-        # ========================================================
-        # PRODUCTIVITY KPIs
-        # ========================================================
-
-        if agent_day_summary.empty:
+        if agent_day_numeric.empty:
 
             st.warning(
                 "No productivity records match "
@@ -3375,158 +3576,156 @@ with productivity_tab:
         else:
 
             # ====================================================
-            # NUMERIC SUMMARY
+            # IMPORTANT:
+            # ALL TOP-LEVEL PRODUCTIVITY KPIs ARE AVERAGES.
+            #
+            # They are averages of agent-day values.
             # ====================================================
 
-            # Build numerical values separately because the
-            # display summary intentionally contains HH:MM:SS.
-
-            session_summary = (
-                build_session_summary(
-                    filtered_productivity
-                )
+            average_login = (
+                agent_day_numeric[
+                    "Login_Seconds"
+                ].mean()
             )
 
-            if not session_summary.empty:
-
-                total_login_seconds = (
-                    session_summary[
-                        "Login Seconds"
-                    ].sum()
-                )
-
-                total_ready_seconds = (
-                    session_summary[
-                        "Ready Seconds"
-                    ].sum()
-                )
-
-                total_break_seconds = (
-                    session_summary[
-                        "Break Seconds"
-                    ].sum()
-                )
-
-                total_call_on_seconds = (
-                    session_summary[
-                        "Call On Seconds"
-                    ].sum()
-                )
-
-                total_unaccounted_seconds = (
-                    session_summary[
-                        "Unaccounted Seconds"
-                    ].sum()
-                )
-
-            else:
-
-                total_login_seconds = 0
-                total_ready_seconds = 0
-                total_break_seconds = 0
-                total_call_on_seconds = 0
-                total_unaccounted_seconds = 0
-
-            overall_ready_pct = (
-                (
-                    total_ready_seconds
-                    / total_login_seconds
-                    * 100
-                )
-                if total_login_seconds > 0
-                else 0
+            average_ready = (
+                agent_day_numeric[
+                    "Ready_Seconds"
+                ].mean()
             )
 
-            overall_break_pct = (
-                (
-                    total_break_seconds
-                    / total_login_seconds
-                    * 100
-                )
-                if total_login_seconds > 0
-                else 0
+            average_break = (
+                agent_day_numeric[
+                    "Break_Seconds"
+                ].mean()
             )
 
-            overall_call_on_ready_pct = (
-                (
-                    total_call_on_seconds
-                    / total_ready_seconds
-                    * 100
-                )
-                if total_ready_seconds > 0
-                else 0
+            average_call_on = (
+                agent_day_numeric[
+                    "Call_On_Seconds"
+                ].mean()
             )
 
-            overall_call_on_login_pct = (
-                (
-                    total_call_on_seconds
-                    / total_login_seconds
-                    * 100
-                )
-                if total_login_seconds > 0
-                else 0
+            average_call_off = (
+                agent_day_numeric[
+                    "Call_Off_Seconds"
+                ].mean()
+            )
+
+            average_unaccounted = (
+                agent_day_numeric[
+                    "Unaccounted_Seconds"
+                ].mean()
+            )
+
+            average_ready_pct = (
+                agent_day_numeric[
+                    "Ready %"
+                ].mean()
+            )
+
+            average_break_pct = (
+                agent_day_numeric[
+                    "Break %"
+                ].mean()
+            )
+
+            average_call_on_ready_pct = (
+                agent_day_numeric[
+                    "Call-On % of Ready"
+                ].mean()
+            )
+
+            average_call_on_login_pct = (
+                agent_day_numeric[
+                    "Call-On % of Login"
+                ].mean()
+            )
+
+            unique_agents = (
+                agent_day_numeric[
+                    "Agent"
+                ].nunique()
+            )
+
+            unique_days = (
+                agent_day_numeric[
+                    "Date"
+                ].nunique()
+            )
+
+            st.caption(
+                f"Average values are calculated per "
+                f"**agent-day** across "
+                f"**{unique_agents} agents** and "
+                f"**{unique_days} day(s)**."
             )
 
             # ====================================================
-            # KPI CARDS
+            # PRIMARY PRODUCTIVITY KPIs
             # ====================================================
 
-            pk1, pk2, pk3, pk4 = (
-                st.columns(4)
+            st.markdown("---")
+
+            st.subheader(
+                "📊 Average Productivity"
             )
+
+            pk1, pk2, pk3, pk4 = st.columns(4)
 
             with pk1:
 
                 st.metric(
-                    "🔐 Total Login",
+                    "🔐 Avg Login",
                     seconds_to_hhmmss(
-                        total_login_seconds
+                        average_login
                     ),
                     help=(
-                        "Total time agents were logged in "
-                        "during the selected period.\n\n"
-                        "Based on Login Time → Logout Time "
-                        "for each agent session."
+                        "Average login duration per "
+                        "agent-day.\n\n"
+                        "Calculated from each agent's "
+                        "Login Time → Logout Time."
                     )
                 )
 
             with pk2:
 
                 st.metric(
-                    "🟢 Active / Ready",
+                    "🟢 Avg Active / Ready",
                     seconds_to_hhmmss(
-                        total_ready_seconds
+                        average_ready
                     ),
                     help=(
-                        "Total Ready/Active time.\n\n"
-                        "Calculated from the report's "
-                        "Ready Duration values."
+                        "Average Ready/Active time "
+                        "per agent-day.\n\n"
+                        "Based on Ready Duration."
                     )
                 )
 
             with pk3:
 
                 st.metric(
-                    "📞 Call-On",
+                    "📞 Avg Call-On",
                     seconds_to_hhmmss(
-                        total_call_on_seconds
+                        average_call_on
                     ),
                     help=(
-                        "Total Auto Call-On time.\n\n"
-                        "Calculated from Auto Call-On Duration."
+                        "Average Auto Call-On duration "
+                        "per agent-day.\n\n"
+                        "Based on Auto Call-On Duration."
                     )
                 )
 
             with pk4:
 
                 st.metric(
-                    "☕ Break",
+                    "☕ Avg Break",
                     seconds_to_hhmmss(
-                        total_break_seconds
+                        average_break
                     ),
                     help=(
-                        "Total recorded break time.\n\n"
-                        "Calculated from Break Duration."
+                        "Average recorded break time "
+                        "per agent-day."
                     )
                 )
 
@@ -3534,68 +3733,59 @@ with productivity_tab:
             # SECOND KPI ROW
             # ====================================================
 
-            pk5, pk6, pk7, pk8 = (
-                st.columns(4)
-            )
+            pk5, pk6, pk7, pk8 = st.columns(4)
 
             with pk5:
 
                 st.metric(
-                    "📊 Ready %",
-                    f"{overall_ready_pct:.1f}%",
+                    "📊 Avg Ready %",
+                    f"{average_ready_pct:.1f}%",
                     help=(
-                        "Ready utilisation against login time.\n\n"
-                        "Ready % = Active / Ready Time "
-                        "÷ Total Login Time."
+                        "Average Ready/Active utilisation "
+                        "per agent-day.\n\n"
+                        "Ready Time ÷ Login Time."
                     )
                 )
 
             with pk6:
 
                 st.metric(
-                    "📞 Call-On % of Ready",
-                    f"{overall_call_on_ready_pct:.1f}%",
+                    "📞 Avg Call-On % of Ready",
+                    f"{average_call_on_ready_pct:.1f}%",
                     help=(
-                        "Percentage of Ready time spent "
-                        "in Auto Call-On.\n\n"
-                        "Call-On % of Ready = Call-On Time "
-                        "÷ Ready Time."
+                        "Average percentage of Ready time "
+                        "spent in Auto Call-On."
                     )
                 )
 
             with pk7:
 
                 st.metric(
-                    "📞 Call-On % of Login",
-                    f"{overall_call_on_login_pct:.1f}%",
+                    "📞 Avg Call-On % of Login",
+                    f"{average_call_on_login_pct:.1f}%",
                     help=(
-                        "Call-On time as a percentage of "
-                        "the complete logged-in period.\n\n"
-                        "Call-On % of Login = Call-On Time "
-                        "÷ Login Time."
+                        "Average Auto Call-On time as a "
+                        "percentage of login time."
                     )
                 )
 
             with pk8:
 
                 st.metric(
-                    "❓ Unaccounted",
+                    "❓ Avg Unaccounted",
                     seconds_to_hhmmss(
-                        total_unaccounted_seconds
+                        average_unaccounted
                     ),
                     help=(
-                        "Logged-in time that is not accounted "
-                        "for by Ready/Active or recorded Break time.\n\n"
-                        "Formula:\n"
-                        "Login − Ready − Break.\n\n"
-                        "Call-On/Call-Off are NOT subtracted "
-                        "again because they occur within the "
-                        "agent's Ready period."
+                        "Average logged-in time per agent-day "
+                        "not accounted for by Ready/Active "
+                        "or Break.\n\n"
+                        "Login − Ready − Break."
                     )
                 )
 
             # ====================================================
-            # AGENT PRODUCTIVITY TABLE
+            # AGENT-DAY TABLE
             # ====================================================
 
             st.markdown("---")
@@ -3605,65 +3795,51 @@ with productivity_tab:
             )
 
             st.caption(
-                "This table reconstructs each agent's day "
-                "from their login/logout session and recorded "
-                "Ready, Break and Auto Call histories."
+                "Each row represents the actual reconstructed "
+                "day of one agent. Where multiple sessions "
+                "occurred on the same day, they are combined "
+                "to represent the complete day."
             )
 
-            display_agent_day = (
-                agent_day_summary.copy()
-            )
-
-            display_agent_day[
-                "Ready %"
-            ] = (
-                display_agent_day[
-                    "Ready %"
-                ]
-                .map(
-                    lambda x:
-                    f"{x:.1f}%"
-                )
-            )
-
-            display_agent_day[
-                "Break %"
-            ] = (
-                display_agent_day[
-                    "Break %"
-                ]
-                .map(
-                    lambda x:
-                    f"{x:.1f}%"
-                )
-            )
-
-            display_agent_day[
-                "Call-On % of Ready"
-            ] = (
-                display_agent_day[
-                    "Call-On % of Ready"
-                ]
-                .map(
-                    lambda x:
-                    f"{x:.1f}%"
-                )
-            )
-
-            display_agent_day[
-                "Call-On % of Login"
-            ] = (
-                display_agent_day[
-                    "Call-On % of Login"
-                ]
-                .map(
-                    lambda x:
-                    f"{x:.1f}%"
+            agent_day_display = (
+                build_agent_day_display(
+                    agent_day_numeric
                 )
             )
 
             st.dataframe(
-                display_agent_day,
+                style_productivity_table(
+                    agent_day_display
+                ),
+                use_container_width=True,
+                hide_index=True
+            )
+
+            # ====================================================
+            # DAILY AVERAGES
+            # ====================================================
+
+            st.markdown("---")
+
+            st.subheader(
+                "📅 Daily Average Productivity"
+            )
+
+            st.caption(
+                "Each date shows the average time per agent "
+                "for that day — not the combined time of all agents."
+            )
+
+            daily_average = (
+                build_daily_average_summary(
+                    agent_day_numeric
+                )
+            )
+
+            st.dataframe(
+                style_productivity_table(
+                    daily_average
+                ),
                 use_container_width=True,
                 hide_index=True
             )
@@ -3687,7 +3863,8 @@ with productivity_tab:
             if break_summary.empty:
 
                 st.info(
-                    "No recorded breaks match the selected filters."
+                    "No recorded breaks match "
+                    "the selected filters."
                 )
 
             else:
@@ -3705,7 +3882,13 @@ with productivity_tab:
             st.markdown("---")
 
             st.subheader(
-                "🔐 Session Summary"
+                "🔐 Session Detail"
+            )
+
+            session_summary = (
+                build_session_summary(
+                    filtered_productivity
+                )
             )
 
             if session_summary.empty:
@@ -3878,10 +4061,12 @@ with productivity_tab:
 
             if available_agents:
 
-                timeline_agent = st.selectbox(
-                    "Select an agent",
-                    options=available_agents,
-                    key="timeline_agent"
+                timeline_agent = (
+                    st.selectbox(
+                        "Select an agent",
+                        available_agents,
+                        key="timeline_agent"
+                    )
                 )
 
                 timeline = (
@@ -3907,15 +4092,8 @@ with productivity_tab:
                         height=500
                     )
 
-                    st.caption(
-                        "The timeline shows the actual event "
-                        "sequence reconstructed from the "
-                        "session, Ready, Break and Auto Call "
-                        "history records."
-                    )
-
             # ====================================================
-            # RAW PRODUCTIVITY HISTORY
+            # RAW RECORDS
             # ====================================================
 
             st.markdown("---")
@@ -3925,43 +4103,12 @@ with productivity_tab:
                 expanded=False
             ):
 
-                raw_productivity_display = (
+                raw_display = (
                     filtered_productivity.copy()
                 )
 
-                # Display source dates cleanly
-                for column in [
-                    "Parsed Login Time",
-                    "Parsed Logout Time",
-                    "Parsed Ready Start Time",
-                    "Parsed Ready End Time",
-                    "Parsed Break End Time",
-                    "Parsed Auto Call-On Start Time",
-                    "Parsed Auto Call-On End Time",
-                    "Parsed Auto Call-Off End Time",
-                ]:
-
-                    if column in raw_productivity_display.columns:
-
-                        raw_productivity_display[
-                            column
-                        ] = (
-                            raw_productivity_display[
-                                column
-                            ]
-                            .apply(
-                                lambda x:
-                                x.strftime(
-                                    "%d-%m-%Y %H:%M:%S"
-                                )
-                                if pd.notna(x)
-                                else ""
-                            )
-                        )
-
-                raw_productivity_display = (
-                    raw_productivity_display
-                    .drop(
+                raw_display = (
+                    raw_display.drop(
                         columns=[
                             "Login Seconds",
                             "Ready Seconds",
@@ -3982,14 +4129,14 @@ with productivity_tab:
                 )
 
                 st.dataframe(
-                    raw_productivity_display,
+                    raw_display,
                     use_container_width=True,
                     hide_index=True,
                     height=500
                 )
 
             # ====================================================
-            # PRODUCTIVITY EXPORT
+            # EXPORT — AGENT DAY
             # ====================================================
 
             st.markdown("---")
@@ -3998,63 +4145,140 @@ with productivity_tab:
                 "⬇️ Productivity Export"
             )
 
-            export_productivity = (
-                agent_day_summary.copy()
+            export_df = (
+                agent_day_numeric.copy()
             )
 
-            # Numeric percentages for export
-            export_productivity[
+            export_df["Date"] = (
+                pd.to_datetime(
+                    export_df["Date"],
+                    errors="coerce"
+                )
+                .dt.strftime(
+                    "%d-%m-%Y"
+                )
+            )
+
+            export_df["Login"] = (
+                export_df[
+                    "Login_Seconds"
+                ]
+                .apply(
+                    seconds_to_hhmmss
+                )
+            )
+
+            export_df["Active / Ready"] = (
+                export_df[
+                    "Ready_Seconds"
+                ]
+                .apply(
+                    seconds_to_hhmmss
+                )
+            )
+
+            export_df["Break"] = (
+                export_df[
+                    "Break_Seconds"
+                ]
+                .apply(
+                    seconds_to_hhmmss
+                )
+            )
+
+            export_df["Call-On"] = (
+                export_df[
+                    "Call_On_Seconds"
+                ]
+                .apply(
+                    seconds_to_hhmmss
+                )
+            )
+
+            export_df["Call-Off"] = (
+                export_df[
+                    "Call_Off_Seconds"
+                ]
+                .apply(
+                    seconds_to_hhmmss
+                )
+            )
+
+            export_df["Unaccounted"] = (
+                export_df[
+                    "Unaccounted_Seconds"
+                ]
+                .apply(
+                    seconds_to_hhmmss
+                )
+            )
+
+            export_df = export_df[
+                [
+                    "Date",
+                    "Agent",
+                    "Sessions",
+                    "Login",
+                    "Active / Ready",
+                    "Break",
+                    "Call-On",
+                    "Call-Off",
+                    "Unaccounted",
+                    "Ready %",
+                    "Break %",
+                    "Call-On % of Ready",
+                    "Call-On % of Login",
+                ]
+            ]
+
+            # Numeric percentages
+            export_df[
                 "Ready %"
             ] = (
-                export_productivity[
+                export_df[
                     "Ready %"
                 ]
                 .round(2)
             )
 
-            export_productivity[
+            export_df[
                 "Break %"
             ] = (
-                export_productivity[
+                export_df[
                     "Break %"
                 ]
                 .round(2)
             )
 
-            export_productivity[
+            export_df[
                 "Call-On % of Ready"
             ] = (
-                export_productivity[
+                export_df[
                     "Call-On % of Ready"
                 ]
                 .round(2)
             )
 
-            export_productivity[
+            export_df[
                 "Call-On % of Login"
             ] = (
-                export_productivity[
+                export_df[
                     "Call-On % of Login"
                 ]
                 .round(2)
             )
 
-            productivity_csv = (
-                export_productivity
-                .to_csv(
-                    index=False
-                )
-                .encode(
-                    "utf-8"
-                )
-            )
-
             st.download_button(
-                label=(
-                    "📥 Download Agent "
-                    "Productivity CSV"
+                "📥 Download Agent Productivity CSV",
+                data=(
+                    export_df
+                    .to_csv(
+                        index=False
+                    )
+                    .encode(
+                        "utf-8"
+                    )
                 ),
-                data=productivity_csv,
                 file_name=(
                     "Agent_Productivity_"
                     f"{productivity_start_date.strftime('%d-%m-%Y')}_"
@@ -4066,7 +4290,7 @@ with productivity_tab:
             )
 
             # ====================================================
-            # PRODUCTIVITY FOOTER
+            # FOOTER
             # ====================================================
 
             st.markdown("---")
@@ -4075,5 +4299,7 @@ with productivity_tab:
                 f"Historical productivity records: "
                 f"{len(productivity_df):,} | "
                 f"Filtered source records: "
-                f"{len(filtered_productivity):,}"
+                f"{len(filtered_productivity):,} | "
+                f"Agent-days: "
+                f"{len(agent_day_numeric):,}"
             )
