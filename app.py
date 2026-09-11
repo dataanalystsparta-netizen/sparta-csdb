@@ -1696,12 +1696,24 @@ def build_break_summary(
 
     break_df = df.copy()
 
+    # --------------------------------------------------------
+    # Convert Break Duration to seconds
+    # --------------------------------------------------------
+
     break_df["Break Seconds"] = (
         break_df["Break Duration"]
         .apply(
             duration_to_seconds
         )
     )
+
+    # --------------------------------------------------------
+    # One record per Ready History ID
+    #
+    # The source CSV repeats some rows because Auto
+    # Call-On/Call-Off history is nested inside Ready
+    # history. We therefore deduplicate using Ready History ID.
+    # --------------------------------------------------------
 
     break_df = (
         break_df[
@@ -1719,6 +1731,7 @@ def build_break_summary(
         )
     )
 
+    # Only actual breaks
     break_df = break_df[
         break_df["Break Seconds"] > 0
     ].copy()
@@ -1726,16 +1739,20 @@ def build_break_summary(
     if break_df.empty:
         return pd.DataFrame()
 
-    break_df[
-        "Break Reason"
-    ] = (
-        break_df[
-            "Break Reason"
-        ]
+    # --------------------------------------------------------
+    # Display blank break reasons as "(Blank)"
+    # --------------------------------------------------------
+
+    break_df["Break Reason"] = (
+        break_df["Break Reason"]
         .apply(
             filter_display_value
         )
     )
+
+    # --------------------------------------------------------
+    # Average break duration by reason
+    # --------------------------------------------------------
 
     summary = (
         break_df
@@ -1760,6 +1777,10 @@ def build_break_summary(
         .reset_index()
     )
 
+    # --------------------------------------------------------
+    # Create display version
+    # --------------------------------------------------------
+
     summary["Average Break"] = (
         summary[
             "Average_Break_Seconds"
@@ -1769,6 +1790,20 @@ def build_break_summary(
         )
     )
 
+    # --------------------------------------------------------
+    # IMPORTANT:
+    # Sort BEFORE removing the numeric sort column.
+    # --------------------------------------------------------
+
+    summary = summary.sort_values(
+        "Average_Break_Seconds",
+        ascending=False
+    )
+
+    # --------------------------------------------------------
+    # Final display columns
+    # --------------------------------------------------------
+
     return summary[
         [
             "Break Reason",
@@ -1776,9 +1811,8 @@ def build_break_summary(
             "Breaks",
             "Average Break",
         ]
-    ].sort_values(
-        "Average_Break_Seconds",
-        ascending=False
+    ].reset_index(
+        drop=True
     )
 
 
